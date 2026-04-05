@@ -23,6 +23,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) => {
   const { currentClass } = useAuth();
   const [students, setStudents] = useState<Student[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [copiedLink, setCopiedLink] = useState<'login' | 'signup' | null>(null);
 
   useEffect(() => {
     if (!currentClass?.id) return;
@@ -64,6 +65,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) => {
     { id: 'fees', title: 'Fees', description: 'Manage billing status', icon: DollarSign },
   ];
 
+  const baseUrl = window.location.origin;
+  const classSlug = currentClass?.subdomain || '';
+  const loginLink = `${baseUrl}/${classSlug}/login`;
+  const signupLink = `${baseUrl}/${classSlug}/signup`;
+
+  const copyToClipboard = (type: 'login' | 'signup', text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedLink(type);
+    setTimeout(() => setCopiedLink(null), 2000);
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -98,6 +110,70 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) => {
             </div>
           );
         })}
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+          <h3 className="font-semibold text-gray-900 mb-4">Class Access Links</h3>
+          <p className="text-sm text-gray-500 mb-4">Share these unique links with your students and teachers so they can join your workspace.</p>
+          
+          <div className="space-y-4">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-medium text-gray-700">Login Link:</span>
+                <span className="text-xs text-blue-600 font-medium">{copiedLink === 'login' ? 'Copied!' : ''}</span>
+              </div>
+              <div className="flex">
+                <input 
+                  type="text" 
+                  value={loginLink} 
+                  readOnly 
+                  className="block w-full rounded-l-lg border-gray-300 bg-gray-50 py-2 pl-3 text-sm text-gray-600 focus:border-blue-500 focus:ring-blue-500"
+                />
+                <button 
+                  onClick={() => copyToClipboard('login', loginLink)}
+                  className="rounded-r-lg border border-l-0 border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-medium text-gray-700">Signup Link:</span>
+                <span className="text-xs text-blue-600 font-medium">{copiedLink === 'signup' ? 'Copied!' : ''}</span>
+              </div>
+              <div className="flex">
+                <input 
+                  type="text" 
+                  value={signupLink} 
+                  readOnly 
+                  className="block w-full rounded-l-lg border-gray-300 bg-gray-50 py-2 pl-3 text-sm text-gray-600 focus:border-blue-500 focus:ring-blue-500"
+                />
+                <button 
+                  onClick={() => copyToClipboard('signup', signupLink)}
+                  className="rounded-r-lg border border-l-0 border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-blue-100 bg-blue-50 p-6 shadow-sm flex flex-col justify-center">
+            <h3 className="font-semibold text-blue-900 mb-2">Pending Approvals & Settings</h3>
+            <p className="text-sm text-blue-700 mb-4">You can require admin approval for new signups in the settings tab, and manage incoming requests in the approvals tab.</p>
+            <div className="flex gap-3">
+              <button onClick={() => onNavigate('approvals')} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700">
+                View Approvals
+              </button>
+              <button onClick={() => onNavigate('settings')} className="rounded-lg bg-white border border-blue-200 px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-50">
+                Class Settings
+              </button>
+            </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.5fr,1fr]">

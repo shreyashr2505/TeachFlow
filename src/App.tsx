@@ -18,6 +18,8 @@ import LectureManagement from './components/Management/LectureManagement';
 import AttendanceManagement from './components/Management/AttendanceManagement';
 import MarksManagement from './components/Management/MarksManagement';
 import FeeManagement from './components/Management/FeeManagement';
+import UserApprovals from './components/Management/UserApprovals';
+import SettingsManagement from './components/Management/SettingsManagement';
 import ErrorBoundary from './components/Common/ErrorBoundary';
 
 const Unauthorized: React.FC = () => (
@@ -26,6 +28,29 @@ const Unauthorized: React.FC = () => (
     <p className="mt-2 text-gray-600">You do not have permission to access this area.</p>
   </div>
 );
+
+const PendingApprovalScreen: React.FC = () => {
+  const { logout } = useAuth();
+  return (
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4">
+      <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 mb-4">
+          <ShieldCheck className="h-6 w-6 text-blue-600" />
+        </div>
+        <h2 className="text-xl font-bold text-gray-900">Approval Pending</h2>
+        <p className="mt-2 text-gray-600 mb-6">
+          Your account is pending approval from the admin. You will be able to access your dashboard once your request is approved.
+        </p>
+        <button
+          onClick={logout}
+          className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          Sign Out
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const LoadingScreen: React.FC = () => (
   <div className="min-h-screen bg-gray-100 flex items-center justify-center">
@@ -157,6 +182,10 @@ const TenantAppShell: React.FC = () => {
           return <MarksManagement />;
         case 'fees':
           return <FeeManagement />;
+        case 'approvals':
+          return <UserApprovals />;
+        case 'settings':
+          return <SettingsManagement />;
         case 'reports':
           return <div className="p-8 text-center text-gray-500">Reports - Coming Soon</div>;
         default:
@@ -242,6 +271,10 @@ const LoginScreen: React.FC<{ tenantSlug?: string; initialMode?: 'login' | 'sign
       return <Navigate to="/platform" replace />;
     }
 
+    if (user.role === 'admin' && (!user.classIds || user.classIds.length === 0)) {
+      return <Navigate to="/setup" replace />;
+    }
+
     const targetClass = tenantSlug
       ? classes.find((item) => item.subdomain === tenantSlug) ?? currentClass ?? classes[0]
       : currentClass ?? classes[0];
@@ -317,6 +350,10 @@ const TenantRoute: React.FC = () => {
 
   if (user.role === 'admin' && classes.length === 0) {
     return <Navigate to="/setup" replace />;
+  }
+
+  if (user.approved === false) {
+    return <PendingApprovalScreen />;
   }
 
   if (!classSlug) {

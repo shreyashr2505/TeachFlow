@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Eye, EyeOff, School, Mail, Lock, User, UserCheck } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import FeedbackMessage from '../Common/FeedbackMessage';
 import { isValidEmail, validatePassword, validateRequired } from '../../utils/validation';
@@ -10,7 +11,10 @@ interface AuthFormProps {
 }
 
 const AuthForm: React.FC<AuthFormProps> = ({ tenantSlug, initialMode = 'login' }) => {
-  const [isLogin, setIsLogin] = useState(initialMode === 'login');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isSignup = location.pathname.includes('signup');
+  const [isLogin, setIsLogin] = useState(!isSignup);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
@@ -20,11 +24,12 @@ const AuthForm: React.FC<AuthFormProps> = ({ tenantSlug, initialMode = 'login' }
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const { login, signup, isLoading } = useAuth();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { login, signup } = useAuth();
 
   useEffect(() => {
-    setIsLogin(initialMode === 'login');
-  }, [initialMode]);
+    setIsLogin(!location.pathname.includes('signup'));
+  }, [location.pathname]);
 
   useEffect(() => {
     if (tenantSlug && !isLogin && formData.role === 'admin') {
@@ -46,23 +51,18 @@ const AuthForm: React.FC<AuthFormProps> = ({ tenantSlug, initialMode = 'login' }
       return;
     }
 
+    setIsSubmitting(true);
     try {
-      let success = false;
       if (isLogin) {
-        success = await login(formData.email, formData.password);
+        await login(formData.email, formData.password, tenantSlug);
       } else {
-        success = await signup(formData.email, formData.password, formData.name, formData.role, tenantSlug);
-      }
-
-      if (!success && isLogin) {
-        setError('Invalid email or password');
-      } else if (!success && !isLogin) {
-        setError('This email is already registered. Please sign in instead.');
-      } else if (success && !isLogin) {
+        await signup(formData.email, formData.password, formData.name, formData.role, tenantSlug);
         setSuccess('Account created successfully. Your workspace access will load automatically.');
       }
-    } catch (err) {
-      setError('An error occurred. Please try again.');
+    } catch (err: any) {
+      setError(err.message || 'An error occurred. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -71,6 +71,11 @@ const AuthForm: React.FC<AuthFormProps> = ({ tenantSlug, initialMode = 'login' }
       ...formData,
       [e.target.name]: e.target.value
     });
+  };
+
+  const handleModeToggle = () => {
+    const nextMode = isLogin ? 'signup' : 'login';
+    navigate(tenantSlug ? `/${tenantSlug}/${nextMode}` : `/${nextMode}`);
   };
 
   return (
@@ -98,7 +103,7 @@ const AuthForm: React.FC<AuthFormProps> = ({ tenantSlug, initialMode = 'login' }
           <form className="space-y-6" onSubmit={handleSubmit}>
             {!isLogin && (
               <div>
-                <label htmlFor="name\" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
                   Full Name
                 </label>
                 <div className="relative">
@@ -207,10 +212,10 @@ const AuthForm: React.FC<AuthFormProps> = ({ tenantSlug, initialMode = 'login' }
 
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isSubmitting}
               className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
             >
-              {isLoading ? 'Please wait...' : (isLogin ? 'Sign In' : 'Sign Up')}
+              {isSubmitting ? 'Please wait...' : (isLogin ? 'Sign In' : 'Sign Up')}
             </button>
           </form>
 
@@ -218,7 +223,7 @@ const AuthForm: React.FC<AuthFormProps> = ({ tenantSlug, initialMode = 'login' }
             <div className="text-center">
               <button
                 type="button"
-                onClick={() => setIsLogin(!isLogin)}
+                onClick={handleModeToggle}
                 className="text-blue-600 hover:text-blue-500 font-medium"
               >
                 {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}

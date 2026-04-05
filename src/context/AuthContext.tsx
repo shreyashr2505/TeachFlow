@@ -18,7 +18,7 @@ interface AuthContextType {
   classes: CoachingClass[];
   currentClass: CoachingClass | null;
   currentClassId: string | null;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string, tenantSlug?: string) => Promise<boolean>;
   signup: (
     email: string,
     password: string,
@@ -123,15 +123,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+
+
+
   const refreshUserData = async () => {
     if (!auth.currentUser) {
       resetAuthState();
       return;
     }
 
-    const profile = await ensureUserProfile(auth.currentUser, user?.role ?? 'student');
+    const profile = await firebaseService.getUserProfile(auth.currentUser.uid);
     if (!profile) {
-      resetAuthState();
+      // FIX: Stop the Auth Listener Loop. If signup is still currently running 
+      // and hasn't created the profile yet, do NOT auto-generate a fallback student profile!
       return;
     }
 
@@ -212,21 +216,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return unsubscribe;
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, tenantSlug?: string) => {
     try {
-      setIsLoading(true);
+      
+      let targetClass: CoachingClass | null = null;
+      if (tenantSlug) {
+        targetClass = await firebaseService.getClassBySlug(tenantSlug);
+        if (!targetClass) {
+          throw new Error('Class not found. Please check the URL.');
+        }
+      }
+
       const credential = await signInWithEmailAndPassword(auth, email, password);
-      const profile = await ensureUserProfile(credential.user);
-      if (profile?.role !== 'super_admin') {
+      
+      const rawProfile = await firebaseService.getUserProfile(credential.user.uid);
+      if (rawProfile?.role !== 'super_admin') {
         await tryAcceptInvites(credential.user.uid, credential.user.email ?? email);
       }
+
+      const profile = await ensureUserProfile(credential.user);
+
+      if (tenantSlug && targetClass && profile) {
+        const existingClassIds = profile.classIds ?? (profile.classId ? [profile.classId] : []);
+        const isSuperAdmin = profile.role === 'super_admin';
+        
+        if (!isSuperAdmin && !existingClassIds.includes(targetClass.id)) {
+          await signOut(auth);
+          throw new Error('No user found in this class. Please sign up or ask for an invite.');
+        }
+
+        if (!isSuperAdmin) {
+          await firebaseService.switchUserClass(credential.user.uid, targetClass.id);
+        }
+      }
+
       await refreshUserData();
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login failed', error);
-      return false;
-    } finally {
-      setIsLoading(false);
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+        throw new Error('Invalid email or password');
+      }
+      throw error;
     }
   };
 
@@ -238,25 +269,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     tenantSlug?: string
   ) => {
     try {
-      setIsLoading(true);
       if (tenantSlug && role === 'admin') {
         throw new Error('Admins must create a class from the main TeachFlow login, not from a class signup link.');
       }
-
-      const credential = await createUserWithEmailAndPassword(auth, email, password);
-      await updateProfile(credential.user, { displayName: name });
 
       let targetClass: CoachingClass | null = null;
       if (tenantSlug) {
         targetClass = await firebaseService.getClassBySlug(tenantSlug);
         if (!targetClass) {
-          throw new Error('Class not found for this signup link.');
+          throw new Error('Class not found. Please check the URL.');
         }
-
         if (!targetClass.settings.allowSelfRegistration) {
           throw new Error('Self-registration is disabled for this class. Please ask the admin to invite you.');
         }
       }
+
+      const credential = await createUserWithEmailAndPassword(auth, email, password);
+      await updateProfile(credential.user, { displayName: name });
 
       const isAutoApproved =
         role === 'admin' ||
@@ -279,16 +308,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       await refreshUserData();
       return true;
-    } catch (error) {
+    } catch (error: any) {
       const code = getAuthErrorCode(error);
       if (code === 'auth/email-already-in-use') {
-        console.warn('Signup blocked because this email already has an account.');
+        try {
+          const credential = await signInWithEmailAndPassword(auth, email, password);
+          if (tenantSlug) {
+            const targetClass = await firebaseService.getClassBySlug(tenantSlug);
+            if (targetClass) {
+              await firebaseService.linkUserToClass(credential.user.uid, targetClass.id);
+            }
+          }
+          await refreshUserData();
+          return true;
+        } catch (signInError: any) {
+          console.warn('Signup fallback login failed for existing account.', signInError);
+          if (signInError.code === 'auth/invalid-credential' || signInError.code === 'auth/wrong-password') {
+            throw new Error('Account already exists, but incorrect password. Please sign in instead.');
+          }
+          throw signInError;
+        }
       } else {
         console.error('Signup failed', error);
+        throw error;
       }
-      return false;
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -296,7 +339,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return false;
 
     try {
-      setIsLoading(true);
       const createdClass = await firebaseService.createClass(user.id, classData);
       const nextClasses = [...classes, createdClass];
       setClasses(nextClasses);
@@ -315,8 +357,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Create class failed', error);
       return false;
-    } finally {
-      setIsLoading(false);
     }
   };
 

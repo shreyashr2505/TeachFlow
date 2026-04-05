@@ -208,6 +208,18 @@ export const firebaseService = {
     });
   },
 
+  async linkUserToClass(userId: string, classId: string) {
+    return withErrorHandling('Failed to link user to class.', async () => {
+      const userRef = doc(usersCollection, userId);
+      await updateDoc(userRef, {
+        classIds: arrayUnion(classId),
+        classId: classId,
+        activeClassId: classId,
+        updatedAt: serverTimestamp(),
+      });
+    });
+  },
+
   async getUserProfile(userId: string) {
     return withErrorHandling('Failed to load user profile.', async () => {
       const snapshot = await getDoc(doc(usersCollection, userId));
@@ -559,12 +571,80 @@ export const firebaseService = {
     );
   },
 
-  subscribeToTeachers(classId: string, callback: (teachers: Teacher[]) => void, onError?: (error: Error) => void) {
-    return onSnapshot(
-      query(classTeachersCollection(classId), orderBy('joinedAt', 'desc')),
-      (snapshot) => callback(snapshot.docs.map((item) => normalizeTeacher(mapDoc<Teacher>(item)))),
-      (error) => onError?.(new ServiceError('Failed to listen to teachers.', error))
+  subscribeToTeachers(classId: string, onUpdate: (teachers: Teacher[]) => void) {
+    const q = query(
+      usersCollection,
+      where('classIds', 'array-contains', classId)
     );
+    return onSnapshot(q, (snapshot) => {
+      onUpdate(
+        snapshot.docs
+          .map(
+            (doc) =>
+              ({
+                id: doc.id,
+                ...doc.data(),
+              }) as unknown as Teacher
+          )
+          .filter((t: any) => t.role === 'teacher')
+      );
+    });
+  },
+
+  async getPendingApprovals(classId: string) {
+    return withErrorHandling('Failed to load pending approvals.', async () => {
+      const q = query(
+        usersCollection,
+        where('classIds', 'array-contains', classId)
+      );
+      const snapshot = await getDocs(q);
+      return snapshot.docs
+        .map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }))
+        .filter((u: any) => u.approved === false) as User[];
+    });
+  },
+
+  async approveUser(userId: string) {
+    return withErrorHandling('Failed to approve user.', async () => {
+      const userRef = doc(usersCollection, userId);
+      await updateDoc(userRef, {
+        approved: true,
+        updatedAt: serverTimestamp(),
+      });
+    });
+  },
+
+  async rejectUser(userId: string, classId: string) {
+    return withErrorHandling('Failed to reject user.', async () => {
+      // Fetch user to safely remove them from the class, or delete if it's their only class
+      const userRef = doc(usersCollection, userId);
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) return;
+      const data = userSnap.data();
+      const currentClassIds: string[] = data.classIds || [];
+      
+      if (currentClassIds.length <= 1) {
+        await deleteDoc(userRef); // Delete if this was their only class
+      } else {
+        await updateDoc(userRef, {
+          classIds: currentClassIds.filter((id) => id !== classId),
+          updatedAt: serverTimestamp(),
+        });
+      }
+    });
+  },
+
+  async updateClassSettings(classId: string, settings: CoachingClass['settings']) {
+    return withErrorHandling('Failed to update class settings.', async () => {
+      const classRef = doc(classesCollection, classId);
+      await updateDoc(classRef, {
+        settings,
+        updatedAt: serverTimestamp(),
+      });
+    });
   },
 
   subscribeToTeacherByEmail(

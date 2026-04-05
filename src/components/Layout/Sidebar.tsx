@@ -9,7 +9,9 @@ import {
   BarChart3,
   UserCheck,
   GraduationCap,
-  ClipboardList
+  ClipboardList,
+  ShieldCheck,
+  Settings
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -32,7 +34,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
           { id: 'attendance', label: 'Attendance', icon: ClipboardList },
           { id: 'marks', label: 'Marks', icon: FileText },
           { id: 'fees', label: 'Fees', icon: DollarSign },
+          { id: 'approvals', label: 'User Approvals', icon: ShieldCheck },
           { id: 'reports', label: 'Reports', icon: BarChart3 },
+          { id: 'settings', label: 'Class Settings', icon: Settings },
         ];
       case 'super_admin':
         return [
