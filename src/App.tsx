@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { useAuth, AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import AuthForm from './components/Auth/AuthForm';
@@ -25,8 +26,41 @@ const Unauthorized: React.FC = () => (
 );
 
 const AppContent: React.FC = () => {
-  const { user, currentClass, isLoading } = useAuth();
+  const { user, currentClass, classes, isLoading, switchClass } = useAuth();
+  const { classSlug } = useParams();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('dashboard');
+
+  React.useEffect(() => {
+    if (isLoading || !user) return;
+
+    if (classes.length === 0) {
+      if (classSlug) {
+        navigate('/', { replace: true });
+      }
+      return;
+    }
+
+    const defaultClass = currentClass ?? classes[0];
+    const matchedClass = classSlug ? classes.find((item) => item.subdomain === classSlug) : defaultClass;
+
+    if (!matchedClass) {
+      navigate(`/${defaultClass.subdomain}`, { replace: true });
+      return;
+    }
+
+    if (currentClass?.id !== matchedClass.id) {
+      void switchClass(matchedClass.id);
+    }
+
+    if (classSlug !== matchedClass.subdomain) {
+      navigate(`/${matchedClass.subdomain}`, { replace: true });
+    }
+  }, [classSlug, classes, currentClass, isLoading, navigate, switchClass, user]);
+
+  React.useEffect(() => {
+    setActiveTab('dashboard');
+  }, [classSlug]);
 
   if (isLoading) {
     return (
@@ -43,6 +77,10 @@ const AppContent: React.FC = () => {
   // Show class setup for admin users who haven't created a class yet
   if (user.role === 'admin' && !currentClass) {
     return <ClassSetup />;
+  }
+
+  if (classSlug && currentClass && currentClass.subdomain !== classSlug) {
+    return null;
   }
 
   const renderContent = () => {
@@ -132,7 +170,11 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider>
         <AuthProvider>
-          <AppContent />
+          <Routes>
+            <Route path="/" element={<AppContent />} />
+            <Route path="/:classSlug/*" element={<AppContent />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
         </AuthProvider>
       </ThemeProvider>
     </ErrorBoundary>

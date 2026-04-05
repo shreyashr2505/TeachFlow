@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { LogOut, User, Settings, School, X, Save, Moon, Sun } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 
 const Header: React.FC = () => {
   const { user, classes, currentClass, logout, switchClass } = useAuth();
   const { darkMode, toggleDarkMode } = useTheme();
+  const navigate = useNavigate();
   const [showSettings, setShowSettings] = useState(false);
   const [profileData, setProfileData] = useState({
     name: user?.name || '',
@@ -58,7 +60,12 @@ const Header: React.FC = () => {
                     {classes.length > 1 ? (
                       <select
                         value={currentClass.id}
-                        onChange={(event) => void switchClass(event.target.value)}
+                        onChange={(event) => {
+                          const nextClass = classes.find((item) => item.id === event.target.value);
+                          if (!nextClass) return;
+                          void switchClass(nextClass.id);
+                          navigate(`/${nextClass.subdomain}`);
+                        }}
                         className="text-xs text-gray-500 border border-gray-200 rounded px-2 py-1 bg-white"
                       >
                         {classes.map((item) => (
@@ -70,7 +77,7 @@ const Header: React.FC = () => {
                     ) : (
                       <p className="text-xs text-gray-500">{currentClass.name}</p>
                     )}
-                    <p className="text-xs text-gray-400">teachflow.com/class/{currentClass.subdomain}</p>
+                    <p className="text-xs text-gray-400">{window.location.origin}/{currentClass.subdomain}</p>
                   </div>
                 )}
               </div>
