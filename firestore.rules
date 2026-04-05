@@ -1,0 +1,137 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    function hasUserDoc() {
+      return isSignedIn() && exists(userPath());
+    }
+
+    function userDoc() {
+      return get(userPath());
+    }
+
+    function isSelf(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function currentRole() {
+      return hasUserDoc() ? userDoc().data.role : null;
+    }
+
+    function linkedStudentId() {
+      return hasUserDoc() ? userDoc().data.linkedStudentId : null;
+    }
+
+    function classMember(classId) {
+      return hasUserDoc() && classId in userDoc().data.classIds;
+    }
+
+    function classAdmin(classId) {
+      return hasUserDoc() && currentRole() == "admin" && classMember(classId);
+    }
+
+    function classTeacher(classId) {
+      return hasUserDoc() && currentRole() == "teacher" && classMember(classId);
+    }
+
+    function classStudent(classId) {
+      return hasUserDoc() && currentRole() == "student" && classMember(classId);
+    }
+
+    function classParent(classId) {
+      return hasUserDoc() && currentRole() == "parent" && classMember(classId);
+    }
+
+    function canReadClass(classId) {
+      return classMember(classId) || (isSignedIn() && resource.data.adminId == request.auth.uid);
+    }
+
+    function inviteMatchesUser() {
+      return isSignedIn() && resource.data.email == request.auth.token.email;
+    }
+
+    function canReadStudentRecord(classId) {
+      return classAdmin(classId) ||
+        classTeacher(classId) ||
+        (classStudent(classId) && linkedStudentId() == resource.id) ||
+        (classParent(classId) && linkedStudentId() == resource.id);
+    }
+
+    function canReadStudentOwnedRecord(classId) {
+      return classAdmin(classId) ||
+        classTeacher(classId) ||
+        (classStudent(classId) && linkedStudentId() == resource.data.studentId) ||
+        (classParent(classId) && linkedStudentId() == resource.data.studentId);
+    }
+
+    match /users/{userId} {
+      allow create: if isSelf(userId);
+      allow read, update, delete: if isSelf(userId);
+    }
+
+    match /classes/{classId} {
+      allow create: if isSignedIn() && request.resource.data.adminId == request.auth.uid;
+      allow read: if canReadClass(classId);
+      allow update, delete: if classAdmin(classId);
+
+      match /students/{studentId} {
+        allow read: if canReadStudentRecord(classId);
+        allow create, update, delete: if classAdmin(classId);
+      }
+
+      match /teachers/{teacherId} {
+        allow read: if canReadClass(classId);
+        allow create, update, delete: if classAdmin(classId);
+      }
+
+      match /lectures/{lectureId} {
+        allow read: if canReadClass(classId);
+        allow create, update: if classAdmin(classId) || classTeacher(classId);
+        allow delete: if classAdmin(classId);
+      }
+
+      match /attendance/{attendanceId} {
+        allow read: if canReadStudentOwnedRecord(classId);
+        allow create, update: if classAdmin(classId) || classTeacher(classId);
+        allow delete: if classAdmin(classId);
+      }
+
+      match /marks/{markId} {
+        allow read: if canReadStudentOwnedRecord(classId);
+        allow create, update: if classAdmin(classId) || classTeacher(classId);
+        allow delete: if classAdmin(classId);
+      }
+
+      match /fees/{feeId} {
+        allow read: if canReadStudentOwnedRecord(classId);
+        allow create, update, delete: if classAdmin(classId);
+      }
+
+      match /auditLogs/{logId} {
+        allow read: if classAdmin(classId) || classTeacher(classId);
+        allow create: if classAdmin(classId) || classTeacher(classId);
+        allow update, delete: if false;
+      }
+    }
+
+    match /invites/{inviteId} {
+      allow read: if inviteMatchesUser() || (isSignedIn() && hasUserDoc() && currentRole() == "admin" && classMember(resource.data.classId));
+      allow create: if hasUserDoc() && currentRole() == "admin" && classMember(request.resource.data.classId) && request.resource.data.invitedBy == request.auth.uid;
+      allow update: if inviteMatchesUser() || (hasUserDoc() && currentRole() == "admin" && classMember(resource.data.classId));
+      allow delete: if false;
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if hasUserDoc() && classMember(resource.data.classId);
+      allow create: if hasUserDoc() && currentRole() == "admin" && classMember(request.resource.data.classId);
+      allow update, delete: if false;
+    }
+  }
+}
