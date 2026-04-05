@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAuth, AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import AuthForm from './components/Auth/AuthForm';
@@ -25,66 +25,23 @@ const Unauthorized: React.FC = () => (
   </div>
 );
 
-const AppContent: React.FC = () => {
-  const { user, currentClass, classes, isLoading, switchClass } = useAuth();
-  const { classSlug } = useParams();
-  const navigate = useNavigate();
+const LoadingScreen: React.FC = () => (
+  <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+    <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+  </div>
+);
+
+const TenantAppShell: React.FC = () => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
+  const { classSlug } = useParams();
 
-  React.useEffect(() => {
-    if (isLoading || !user) return;
-
-    if (classes.length === 0) {
-      if (classSlug) {
-        navigate('/', { replace: true });
-      }
-      return;
-    }
-
-    const defaultClass = currentClass ?? classes[0];
-    const matchedClass = classSlug ? classes.find((item) => item.subdomain === classSlug) : defaultClass;
-
-    if (!matchedClass) {
-      navigate(`/${defaultClass.subdomain}`, { replace: true });
-      return;
-    }
-
-    if (currentClass?.id !== matchedClass.id) {
-      void switchClass(matchedClass.id);
-    }
-
-    if (classSlug !== matchedClass.subdomain) {
-      navigate(`/${matchedClass.subdomain}`, { replace: true });
-    }
-  }, [classSlug, classes, currentClass, isLoading, navigate, switchClass, user]);
-
-  React.useEffect(() => {
+  useEffect(() => {
     setActiveTab('dashboard');
   }, [classSlug]);
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <AuthForm />;
-  }
-
-  // Show class setup for admin users who haven't created a class yet
-  if (user.role === 'admin' && !currentClass) {
-    return <ClassSetup />;
-  }
-
-  if (classSlug && currentClass && currentClass.subdomain !== classSlug) {
-    return null;
-  }
-
   const renderContent = () => {
-    if (user.role === 'admin') {
+    if (user?.role === 'admin') {
       switch (activeTab) {
         case 'dashboard':
           return <AdminDashboard onNavigate={setActiveTab} />;
@@ -105,7 +62,9 @@ const AppContent: React.FC = () => {
         default:
           return <AdminDashboard onNavigate={setActiveTab} />;
       }
-    } else if (user.role === 'teacher') {
+    }
+
+    if (user?.role === 'teacher') {
       switch (activeTab) {
         case 'dashboard':
           return <TeacherDashboard />;
@@ -120,7 +79,9 @@ const AppContent: React.FC = () => {
         default:
           return <TeacherDashboard />;
       }
-    } else if (user.role === 'student') {
+    }
+
+    if (user?.role === 'student') {
       switch (activeTab) {
         case 'dashboard':
           return <StudentDashboard />;
@@ -135,7 +96,9 @@ const AppContent: React.FC = () => {
         default:
           return <StudentDashboard />;
       }
-    } else if (user.role === 'parent') {
+    }
+
+    if (user?.role === 'parent') {
       switch (activeTab) {
         case 'dashboard':
           return <ParentDashboard />;
@@ -149,6 +112,7 @@ const AppContent: React.FC = () => {
           return <ParentDashboard />;
       }
     }
+
     return <Unauthorized />;
   };
 
@@ -157,12 +121,109 @@ const AppContent: React.FC = () => {
       <Header />
       <div className="flex">
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
-        <main className="flex-1 p-8">
-          {renderContent()}
-        </main>
+        <main className="flex-1 p-8">{renderContent()}</main>
       </div>
     </div>
   );
+};
+
+const LoginScreen: React.FC = () => {
+  const { user, currentClass, classes, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <LoadingScreen />;
+  }
+
+  if (user) {
+    const targetClass = currentClass ?? classes[0];
+    if (targetClass) {
+      return <Navigate to={`/${targetClass.subdomain}`} replace />;
+    }
+  }
+
+  return <AuthForm />;
+};
+
+const TenantRoute: React.FC = () => {
+  const { user, currentClass, classes, isLoading, switchClass } = useAuth();
+  const { classSlug } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (isLoading || !user || !classSlug) return;
+
+    const targetClass = classes.find((item) => item.subdomain === classSlug);
+    const fallbackClass = currentClass ?? classes[0];
+
+    if (!targetClass) {
+      if (fallbackClass) {
+        navigate(`/${fallbackClass.subdomain}`, { replace: true });
+      } else if (user.role === 'admin') {
+        navigate('/setup', { replace: true });
+      } else {
+        navigate('/login', { replace: true });
+      }
+      return;
+    }
+
+    if (currentClass?.id !== targetClass.id) {
+      void switchClass(targetClass.id);
+      return;
+    }
+
+    if (targetClass.subdomain !== classSlug) {
+      navigate(`/${targetClass.subdomain}`, { replace: true });
+    }
+  }, [classSlug, classes, currentClass, isLoading, navigate, switchClass, user]);
+
+  if (isLoading) {
+    return <LoadingScreen />;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (user.role === 'admin' && classes.length === 0) {
+    return <Navigate to="/setup" replace />;
+  }
+
+  if (!classSlug) {
+    const targetClass = currentClass ?? classes[0];
+    if (targetClass) {
+      return <Navigate to={`/${targetClass.subdomain}`} replace />;
+    }
+  }
+
+  if (!currentClass || currentClass.subdomain !== classSlug) {
+    return <LoadingScreen />;
+  }
+
+  return <TenantAppShell />;
+};
+
+const SetupScreen: React.FC = () => {
+  const { user, currentClass, classes, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <LoadingScreen />;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (currentClass ?? classes[0]) {
+    const targetClass = currentClass ?? classes[0];
+    return <Navigate to={`/${targetClass!.subdomain}`} replace />;
+  }
+
+  if (user.role !== 'admin') {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <ClassSetup />;
 };
 
 function App() {
@@ -171,9 +232,11 @@ function App() {
       <ThemeProvider>
         <AuthProvider>
           <Routes>
-            <Route path="/" element={<AppContent />} />
-            <Route path="/:classSlug/*" element={<AppContent />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="/" element={<Navigate to="/login" replace />} />
+            <Route path="/login" element={<LoginScreen />} />
+            <Route path="/setup" element={<SetupScreen />} />
+            <Route path="/:classSlug/*" element={<TenantRoute />} />
+            <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         </AuthProvider>
       </ThemeProvider>

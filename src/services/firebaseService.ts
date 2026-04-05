@@ -192,6 +192,11 @@ export const firebaseService = {
 
   async createClass(adminId: string, classData: Omit<CoachingClass, 'id' | 'adminId' | 'createdAt'>) {
     return withErrorHandling('Failed to create class.', async () => {
+      const existing = await getDocs(query(classesCollection, where('subdomain', '==', classData.subdomain)));
+      if (!existing.empty) {
+        throw new Error('This class URL is already taken. Please choose a different subdomain.');
+      }
+
       const classRef = await addDoc(classesCollection, {
         ...classData,
         adminId,
