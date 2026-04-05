@@ -79,7 +79,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     email: firebaseUser.email ?? '',
     name: firebaseUser.displayName ?? firebaseUser.email?.split('@')[0] ?? 'TeachFlow User',
     role,
-    approved: role === 'admin',
+    approved: role === 'admin' || role === 'super_admin',
     classIds: [],
     activeClassId: undefined,
     classId: undefined,
@@ -129,6 +129,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
+    if (profile.role === 'super_admin') {
+      setUser({
+        ...profile,
+        classId: undefined,
+        activeClassId: undefined,
+        classIds: [],
+      });
+      setClasses([]);
+      setCurrentClassId(null);
+      return;
+    }
+
     const userClasses =
       profile.role === 'admin'
         ? await firebaseService.getClassesByAdmin(profile.id)
@@ -149,6 +161,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const tryAcceptInvites = async (userId: string, email: string) => {
     try {
+      if (user?.role === 'super_admin') {
+        return;
+      }
+
       if (auth.currentUser) {
         await getIdToken(auth.currentUser, true);
         await new Promise((resolve) => window.setTimeout(resolve, 250));
@@ -194,7 +210,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setIsLoading(true);
       const credential = await signInWithEmailAndPassword(auth, email, password);
-      await tryAcceptInvites(credential.user.uid, credential.user.email ?? email);
+      const profile = await ensureUserProfile(credential.user);
+      if (profile?.role !== 'super_admin') {
+        await tryAcceptInvites(credential.user.uid, credential.user.email ?? email);
+      }
       await refreshUserData();
       return true;
     } catch (error) {
@@ -216,7 +235,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email,
         name,
         role,
-        approved: role === 'admin',
+        approved: role === 'admin' || role === 'super_admin',
         classIds: [],
         activeClassId: undefined,
         classId: undefined,

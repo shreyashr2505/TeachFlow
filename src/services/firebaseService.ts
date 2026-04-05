@@ -80,6 +80,12 @@ const classLimitsByPlan: Record<CoachingClass['plan'], { students: number; teach
 
 const normalizeUser = (user: User): User => ({
   ...user,
+  role:
+    user.role === ('super admin' as User['role']) ||
+    user.role === ('super-admin' as User['role']) ||
+    user.role === ('superadmin' as User['role'])
+      ? 'super_admin'
+      : user.role,
   createdAt: toIsoString(user.createdAt),
   classIds: user.classIds ?? (user.classId ? [user.classId] : []),
   activeClassId: user.activeClassId ?? user.classId,
