@@ -603,22 +603,15 @@ export const firebaseService = {
       const invites = await this.getPendingInvitesByEmail(email);
       if (invites.length === 0) return [];
 
+      const primaryInvite = invites[0];
       const classIds = invites.map((invite) => invite.classId);
-      const roles = invites.map((invite) => invite.role);
       const linkedInvite = invites.find((invite) => invite.studentId);
-      const resolvedRole = roles.includes('teacher')
-        ? 'teacher'
-        : roles.includes('student')
-          ? 'student'
-          : roles.includes('parent')
-            ? 'parent'
-            : 'student';
 
       await updateDoc(doc(usersCollection, userId), {
         classIds: arrayUnion(...classIds),
-        classId: classIds[0],
-        activeClassId: classIds[0],
-        role: resolvedRole,
+        classId: primaryInvite.classId,
+        activeClassId: primaryInvite.classId,
+        role: primaryInvite.role,
         approved: true,
         linkedStudentId: linkedInvite?.studentId ?? null,
         updatedAt: serverTimestamp(),
