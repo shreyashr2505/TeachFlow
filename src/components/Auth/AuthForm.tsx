@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Eye, EyeOff, School, Mail, Lock, User, UserCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import FeedbackMessage from '../Common/FeedbackMessage';
@@ -6,10 +6,11 @@ import { isValidEmail, validatePassword, validateRequired } from '../../utils/va
 
 interface AuthFormProps {
   tenantSlug?: string;
+  initialMode?: 'login' | 'signup';
 }
 
-const AuthForm: React.FC<AuthFormProps> = ({ tenantSlug }) => {
-  const [isLogin, setIsLogin] = useState(true);
+const AuthForm: React.FC<AuthFormProps> = ({ tenantSlug, initialMode = 'login' }) => {
+  const [isLogin, setIsLogin] = useState(initialMode === 'login');
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
@@ -20,6 +21,16 @@ const AuthForm: React.FC<AuthFormProps> = ({ tenantSlug }) => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const { login, signup, isLoading } = useAuth();
+
+  useEffect(() => {
+    setIsLogin(initialMode === 'login');
+  }, [initialMode]);
+
+  useEffect(() => {
+    if (tenantSlug && !isLogin && formData.role === 'admin') {
+      setFormData((prev) => ({ ...prev, role: 'student' }));
+    }
+  }, [tenantSlug, isLogin, formData.role]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,7 +51,7 @@ const AuthForm: React.FC<AuthFormProps> = ({ tenantSlug }) => {
       if (isLogin) {
         success = await login(formData.email, formData.password);
       } else {
-        success = await signup(formData.email, formData.password, formData.name, formData.role);
+        success = await signup(formData.email, formData.password, formData.name, formData.role, tenantSlug);
       }
 
       if (!success && isLogin) {
@@ -180,9 +191,14 @@ const AuthForm: React.FC<AuthFormProps> = ({ tenantSlug }) => {
                     <option value="student">Student</option>
                     <option value="teacher">Teacher</option>
                     <option value="parent">Parent</option>
-                    <option value="admin">Admin</option>
+                    {!tenantSlug ? <option value="admin">Admin</option> : null}
                   </select>
                 </div>
+                {tenantSlug ? (
+                  <p className="mt-2 text-xs text-gray-500">
+                    Class signup links are for students, teachers, and parents. Admins should use the main TeachFlow login.
+                  </p>
+                ) : null}
               </div>
             )}
 

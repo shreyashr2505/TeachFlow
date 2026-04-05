@@ -19,7 +19,13 @@ interface AuthContextType {
   currentClass: CoachingClass | null;
   currentClassId: string | null;
   login: (email: string, password: string) => Promise<boolean>;
-  signup: (email: string, password: string, name: string, role: User['role']) => Promise<boolean>;
+  signup: (
+    email: string,
+    password: string,
+    name: string,
+    role: User['role'],
+    tenantSlug?: string
+  ) => Promise<boolean>;
   logout: () => Promise<void>;
   isLoading: boolean;
   createClass: (classData: Omit<CoachingClass, 'id' | 'adminId' | 'createdAt'>) => Promise<boolean>;
@@ -224,24 +230,53 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signup = async (email: string, password: string, name: string, role: User['role']) => {
+  const signup = async (
+    email: string,
+    password: string,
+    name: string,
+    role: User['role'],
+    tenantSlug?: string
+  ) => {
     try {
       setIsLoading(true);
+      if (tenantSlug && role === 'admin') {
+        throw new Error('Admins must create a class from the main TeachFlow login, not from a class signup link.');
+      }
+
       const credential = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(credential.user, { displayName: name });
+
+      let targetClass: CoachingClass | null = null;
+      if (tenantSlug) {
+        targetClass = await firebaseService.getClassBySlug(tenantSlug);
+        if (!targetClass) {
+          throw new Error('Class not found for this signup link.');
+        }
+
+        if (!targetClass.settings.allowSelfRegistration) {
+          throw new Error('Self-registration is disabled for this class. Please ask the admin to invite you.');
+        }
+      }
+
+      const isAutoApproved =
+        role === 'admin' ||
+        role === 'super_admin' ||
+        (targetClass ? !targetClass.settings.requireApproval : false);
 
       await firebaseService.upsertUser({
         id: credential.user.uid,
         email,
         name,
         role,
-        approved: role === 'admin' || role === 'super_admin',
-        classIds: [],
-        activeClassId: undefined,
-        classId: undefined,
+        approved: isAutoApproved,
+        classIds: targetClass ? [targetClass.id] : [],
+        activeClassId: targetClass?.id,
+        classId: targetClass?.id,
       });
 
-      await tryAcceptInvites(credential.user.uid, email);
+      if (!targetClass) {
+        await tryAcceptInvites(credential.user.uid, email);
+      }
       await refreshUserData();
       return true;
     } catch (error) {
@@ -249,7 +284,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (code === 'auth/email-already-in-use') {
         console.warn('Signup blocked because this email already has an account.');
       } else {
-      console.error('Signup failed', error);
+        console.error('Signup failed', error);
       }
       return false;
     } finally {

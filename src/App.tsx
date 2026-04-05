@@ -227,7 +227,10 @@ const TenantAppShell: React.FC = () => {
   );
 };
 
-const LoginScreen: React.FC<{ tenantSlug?: string }> = ({ tenantSlug }) => {
+const LoginScreen: React.FC<{ tenantSlug?: string; initialMode?: 'login' | 'signup' }> = ({
+  tenantSlug,
+  initialMode = 'login',
+}) => {
   const { user, currentClass, classes, isLoading } = useAuth();
 
   if (isLoading) {
@@ -248,12 +251,19 @@ const LoginScreen: React.FC<{ tenantSlug?: string }> = ({ tenantSlug }) => {
     }
   }
 
-  return <AuthForm tenantSlug={tenantSlug} />;
+  return <AuthForm tenantSlug={tenantSlug} initialMode={initialMode} />;
 };
 
 const TenantLoginScreen: React.FC = () => {
   const { classSlug } = useParams();
-  return <LoginScreen tenantSlug={classSlug} />;
+  return <LoginScreen tenantSlug={classSlug} initialMode="login" />;
+};
+
+const SignupScreen: React.FC = () => <LoginScreen initialMode="signup" />;
+
+const TenantSignupScreen: React.FC = () => {
+  const { classSlug } = useParams();
+  return <LoginScreen tenantSlug={classSlug} initialMode="signup" />;
 };
 
 const TenantRoute: React.FC = () => {
@@ -320,7 +330,7 @@ const TenantRoute: React.FC = () => {
     return <LoadingScreen />;
   }
 
-  if (!currentClass.isActive) {
+  if (currentClass.isActive === false) {
     return <InactiveClassScreen className={currentClass.name} plan={currentClass.plan} />;
   }
 
@@ -380,9 +390,11 @@ function App() {
           <Routes>
             <RouterRoute path="/" element={<LandingPage />} />
             <RouterRoute path="/login" element={<LoginScreen />} />
+            <RouterRoute path="/signup" element={<SignupScreen />} />
             <RouterRoute path="/setup" element={<SetupScreen />} />
             <RouterRoute path="/platform" element={<PlatformRoute />} />
             <RouterRoute path="/:classSlug/login" element={<TenantLoginScreen />} />
+            <RouterRoute path="/:classSlug/signup" element={<TenantSignupScreen />} />
             <RouterRoute path="/:classSlug/*" element={<TenantRoute />} />
             <RouterRoute path="*" element={<Navigate to="/" replace />} />
           </Routes>

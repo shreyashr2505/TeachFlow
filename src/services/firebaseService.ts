@@ -94,6 +94,12 @@ const normalizeUser = (user: User): User => ({
 const normalizeClass = (coachingClass: CoachingClass): CoachingClass => ({
   ...coachingClass,
   createdAt: toIsoString(coachingClass.createdAt),
+  plan: coachingClass.plan ?? 'free',
+  isActive: coachingClass.isActive ?? true,
+  studentCount: coachingClass.studentCount ?? 0,
+  teacherCount: coachingClass.teacherCount ?? 0,
+  limits:
+    coachingClass.limits ?? classLimitsByPlan[coachingClass.plan ?? 'free'],
 });
 
 const normalizeStudent = (student: Student): Student => ({
@@ -156,7 +162,7 @@ const makeExpiry = () => {
 };
 
 const ensureClassAllowsAccess = (coachingClass: CoachingClass) => {
-  if (!coachingClass.isActive) {
+  if (coachingClass.isActive === false) {
     throw new Error('Subscription expired. Upgrade plan to continue using this class workspace.');
   }
 };
@@ -224,6 +230,14 @@ export const firebaseService = {
     return withErrorHandling('Failed to load admin classes.', async () => {
       const snapshot = await getDocs(query(classesCollection, where('adminId', '==', adminId)));
       return snapshot.docs.map((item) => normalizeClass(mapDoc<CoachingClass>(item)));
+    });
+  },
+
+  async getClassBySlug(subdomain: string) {
+    return withErrorHandling('Failed to load class by slug.', async () => {
+      const snapshot = await getDocs(query(classesCollection, where('subdomain', '==', subdomain)));
+      const classDoc = snapshot.docs[0];
+      return classDoc ? normalizeClass(mapDoc<CoachingClass>(classDoc)) : null;
     });
   },
 
