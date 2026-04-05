@@ -22,9 +22,16 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ initialTab = 'overv
   useEffect(() => setActiveTab(initialTab), [initialTab]);
 
   useEffect(() => {
-    if (!currentClass?.id || !user?.email) return;
-    return firebaseService.subscribeToStudentByEmail(currentClass.id, user.email, setStudent);
-  }, [currentClass?.id, user?.email]);
+    if (!currentClass?.id) return;
+
+    if (user?.linkedStudentId) {
+      return firebaseService.subscribeToStudentById(currentClass.id, user.linkedStudentId, setStudent);
+    }
+
+    if (user?.email) {
+      return firebaseService.subscribeToStudentByEmail(currentClass.id, user.email, setStudent);
+    }
+  }, [currentClass?.id, user?.email, user?.linkedStudentId]);
 
   useEffect(() => {
     if (!currentClass?.id || !student?.batch) {

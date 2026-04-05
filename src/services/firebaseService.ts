@@ -6,6 +6,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  increment,
   onSnapshot,
   orderBy,
   query,
@@ -70,6 +71,12 @@ const classFeesCollection = (classId: string) => collection(db, 'classes', class
 const classAuditCollection = (classId: string) => collection(db, 'classes', classId, 'auditLogs');
 const classStudentDoc = (classId: string, studentId: string) => doc(db, 'classes', classId, 'students', studentId);
 const notificationsCollection = collection(db, 'notifications');
+
+const classLimitsByPlan: Record<CoachingClass['plan'], { students: number; teachers: number }> = {
+  free: { students: 50, teachers: 5 },
+  standard: { students: 200, teachers: 25 },
+  pro: { students: 100000, teachers: 100000 },
+};
 
 const normalizeUser = (user: User): User => ({
   ...user,
@@ -142,6 +149,30 @@ const makeExpiry = () => {
   return expires.toISOString();
 };
 
+const ensureClassAllowsAccess = (coachingClass: CoachingClass) => {
+  if (!coachingClass.isActive) {
+    throw new Error('Subscription expired. Upgrade plan to continue using this class workspace.');
+  }
+};
+
+const ensureClassCanAddStudent = (coachingClass: CoachingClass) => {
+  ensureClassAllowsAccess(coachingClass);
+  const limit = coachingClass.limits?.students ?? classLimitsByPlan[coachingClass.plan].students;
+  const current = coachingClass.studentCount ?? 0;
+  if (current >= limit) {
+    throw new Error(`${coachingClass.plan.charAt(0).toUpperCase() + coachingClass.plan.slice(1)} plan student limit reached.`);
+  }
+};
+
+const ensureClassCanAddTeacher = (coachingClass: CoachingClass) => {
+  ensureClassAllowsAccess(coachingClass);
+  const limit = coachingClass.limits?.teachers ?? classLimitsByPlan[coachingClass.plan].teachers;
+  const current = coachingClass.teacherCount ?? 0;
+  if (current >= limit) {
+    throw new Error(`${coachingClass.plan.charAt(0).toUpperCase() + coachingClass.plan.slice(1)} plan teacher limit reached.`);
+  }
+};
+
 export const firebaseService = {
   async upsertUser(user: Omit<User, 'createdAt'> & { createdAt?: string }) {
     return withErrorHandling('Failed to save user profile.', async () => {
@@ -190,6 +221,14 @@ export const firebaseService = {
     });
   },
 
+  async getClass(classId: string) {
+    return withErrorHandling('Failed to load class.', async () => {
+      const snapshot = await getDoc(doc(classesCollection, classId));
+      if (!snapshot.exists()) return null;
+      return normalizeClass(mapDoc<CoachingClass>(snapshot));
+    });
+  },
+
   async createClass(adminId: string, classData: Omit<CoachingClass, 'id' | 'adminId' | 'createdAt'>) {
     return withErrorHandling('Failed to create class.', async () => {
       const existing = await getDocs(query(classesCollection, where('subdomain', '==', classData.subdomain)));
@@ -200,6 +239,11 @@ export const firebaseService = {
       const classRef = await addDoc(classesCollection, {
         ...classData,
         adminId,
+        plan: classData.plan ?? 'free',
+        isActive: classData.isActive ?? true,
+        studentCount: classData.studentCount ?? 0,
+        teacherCount: classData.teacherCount ?? 0,
+        limits: classData.limits ?? { students: 50, teachers: 5 },
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -228,10 +272,20 @@ export const firebaseService = {
 
   async addStudent(classId: string, studentData: Omit<Student, 'id' | 'classId' | 'joinedAt'>) {
     return withErrorHandling('Failed to add student.', async () => {
+      const coachingClass = await this.getClass(classId);
+      if (!coachingClass) {
+        throw new Error('Class not found.');
+      }
+      ensureClassCanAddStudent(coachingClass);
+
       const docRef = await addDoc(classStudentsCollection(classId), {
         ...sanitizeFirestoreData(studentData),
         classId,
         joinedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      await updateDoc(doc(classesCollection, classId), {
+        studentCount: increment(1),
         updatedAt: serverTimestamp(),
       });
       const snapshot = await getDoc(docRef);
@@ -251,15 +305,29 @@ export const firebaseService = {
   async deleteStudent(classId: string, studentId: string) {
     return withErrorHandling('Failed to delete student.', async () => {
       await deleteDoc(doc(classStudentsCollection(classId), studentId));
+      await updateDoc(doc(classesCollection, classId), {
+        studentCount: increment(-1),
+        updatedAt: serverTimestamp(),
+      });
     });
   },
 
   async addTeacher(classId: string, teacherData: Omit<Teacher, 'id' | 'classId' | 'joinedAt'>) {
     return withErrorHandling('Failed to add teacher.', async () => {
+      const coachingClass = await this.getClass(classId);
+      if (!coachingClass) {
+        throw new Error('Class not found.');
+      }
+      ensureClassCanAddTeacher(coachingClass);
+
       const docRef = await addDoc(classTeachersCollection(classId), {
         ...sanitizeFirestoreData(teacherData),
         classId,
         joinedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      await updateDoc(doc(classesCollection, classId), {
+        teacherCount: increment(1),
         updatedAt: serverTimestamp(),
       });
       const snapshot = await getDoc(docRef);
@@ -279,6 +347,10 @@ export const firebaseService = {
   async deleteTeacher(classId: string, teacherId: string) {
     return withErrorHandling('Failed to delete teacher.', async () => {
       await deleteDoc(doc(classTeachersCollection(classId), teacherId));
+      await updateDoc(doc(classesCollection, classId), {
+        teacherCount: increment(-1),
+        updatedAt: serverTimestamp(),
+      });
     });
   },
 
@@ -409,6 +481,22 @@ export const firebaseService = {
       query(classStudentsCollection(classId), orderBy('joinedAt', 'desc')),
       (snapshot) => callback(snapshot.docs.map((item) => normalizeStudent(mapDoc<Student>(item)))),
       (error) => onError?.(new ServiceError('Failed to listen to students.', error))
+    );
+  },
+
+  subscribeToAllUsers(callback: (users: User[]) => void, onError?: (error: Error) => void) {
+    return onSnapshot(
+      usersCollection,
+      (snapshot) => callback(snapshot.docs.map((item) => normalizeUser(mapDoc<User>(item)))),
+      (error) => onError?.(new ServiceError('Failed to listen to users.', error))
+    );
+  },
+
+  subscribeToAllClasses(callback: (classes: CoachingClass[]) => void, onError?: (error: Error) => void) {
+    return onSnapshot(
+      classesCollection,
+      (snapshot) => callback(snapshot.docs.map((item) => normalizeClass(mapDoc<CoachingClass>(item)))),
+      (error) => onError?.(new ServiceError('Failed to listen to classes.', error))
     );
   },
 

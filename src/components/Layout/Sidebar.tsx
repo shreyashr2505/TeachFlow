@@ -34,6 +34,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
           { id: 'fees', label: 'Fees', icon: DollarSign },
           { id: 'reports', label: 'Reports', icon: BarChart3 },
         ];
+      case 'super_admin':
+        return [
+          { id: 'dashboard', label: 'Platform', icon: Home },
+        ];
       case 'teacher':
         return [
           { id: 'dashboard', label: 'Dashboard', icon: Home },

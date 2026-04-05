@@ -4,7 +4,11 @@ import { useAuth } from '../../context/AuthContext';
 import FeedbackMessage from '../Common/FeedbackMessage';
 import { isValidEmail, validatePassword, validateRequired } from '../../utils/validation';
 
-const AuthForm: React.FC = () => {
+interface AuthFormProps {
+  tenantSlug?: string;
+}
+
+const AuthForm: React.FC<AuthFormProps> = ({ tenantSlug }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
@@ -71,7 +75,11 @@ const AuthForm: React.FC = () => {
             TeachFlow
           </h2>
           <p className="mt-2 text-sm text-gray-600">
-            {isLogin ? 'Sign in to your account' : 'Create your account'}
+            {tenantSlug
+              ? `${isLogin ? 'Sign in to continue to' : 'Create your account for'} ${tenantSlug}`
+              : isLogin
+                ? 'Sign in to your account'
+                : 'Create your account'}
           </p>
         </div>
 

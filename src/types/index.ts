@@ -2,7 +2,7 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'admin' | 'teacher' | 'student' | 'parent';
+  role: 'super_admin' | 'admin' | 'teacher' | 'student' | 'parent';
   classId?: string;
   classIds?: string[];
   activeClassId?: string;
@@ -21,6 +21,14 @@ export interface CoachingClass {
   subdomain: string;
   adminId: string;
   createdAt: string;
+  plan: 'free' | 'standard' | 'pro';
+  isActive: boolean;
+  studentCount?: number;
+  teacherCount?: number;
+  limits: {
+    students: number;
+    teachers: number;
+  };
   settings: {
     allowSelfRegistration: boolean;
     requireApproval: boolean;
