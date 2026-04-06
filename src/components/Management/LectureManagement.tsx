@@ -54,8 +54,8 @@ const LectureManagement: React.FC = () => {
   }, [teachers, newLecture.teacherId]);
 
   const batches = useMemo(
-    () => Array.from(new Set(teachers.flatMap((teacher) => teacher.batches))).length
-      ? Array.from(new Set(teachers.flatMap((teacher) => teacher.batches)))
+    () => Array.from(new Set(teachers.flatMap((teacher) => teacher.batches ?? []))).length
+      ? Array.from(new Set(teachers.flatMap((teacher) => teacher.batches ?? [])))
       : ['Batch A', 'Batch B', 'Batch C'],
     [teachers]
   );

@@ -128,8 +128,8 @@ const AnalyticsDashboard: React.FC = () => {
                   <div className="mt-2 grid grid-cols-2 gap-3 text-sm text-gray-600">
                     <div>Pass: {item.passPercentage}%</div>
                     <div>Attendance: {item.attendancePercentage}%</div>
-                    <div>Top: {item.topStudents.length}</div>
-                    <div>Weak: {item.weakStudents.length}</div>
+                    <div>Top: {(item.topStudents ?? []).length}</div>
+                    <div>Weak: {(item.weakStudents ?? []).length}</div>
                   </div>
                   {item.aiSummary ? <p className="mt-3 text-sm text-gray-700">{item.aiSummary}</p> : null}
                 </div>

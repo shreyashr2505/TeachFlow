@@ -57,7 +57,7 @@ const ParentDashboard: React.FC<ParentDashboardProps> = ({ initialTab = 'overvie
   }, [child?.id, currentClass?.id]);
 
   const childTeachers = useMemo(
-    () => teachers.filter((teacher) => (child ? teacher.batches.includes(child.batch) : false)),
+    () => teachers.filter((teacher) => (child ? (teacher.batches ?? []).includes(child.batch) : false)),
     [child, teachers]
   );
   const childAttendance = useMemo(

@@ -39,14 +39,14 @@ const TeacherManagement: React.FC = () => {
   }, [currentClass?.id]);
 
   const allBatches = useMemo(() => {
-    return Array.from(new Set([...defaultBatches, ...teachers.flatMap((teacher) => teacher.batches)]));
+    return Array.from(new Set([...defaultBatches, ...teachers.flatMap((teacher) => teacher.batches ?? [])]));
   }, [teachers]);
 
   const filteredTeachers = teachers.filter((teacher) => {
     const query = searchTerm.toLowerCase();
     const matchesSearch =
       teacher.name.toLowerCase().includes(query) || teacher.email.toLowerCase().includes(query);
-    const matchesSubject = selectedSubject === 'all' || teacher.subjects.includes(selectedSubject);
+    const matchesSubject = selectedSubject === 'all' || (teacher.subjects ?? []).includes(selectedSubject);
     return matchesSearch && matchesSubject;
   });
 
@@ -134,8 +134,8 @@ const TeacherManagement: React.FC = () => {
       name: teacher.name,
       email: teacher.email,
       phone: teacher.phone ?? '',
-      subjects: teacher.subjects,
-      batches: teacher.batches,
+      subjects: teacher.subjects ?? [],
+      batches: teacher.batches ?? [],
       salary: teacher.salary ?? 0,
     });
     setShowModal(true);
@@ -176,11 +176,11 @@ const TeacherManagement: React.FC = () => {
           <div className="text-sm text-gray-600">Teachers added</div>
         </div>
         <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-          <div className="text-2xl font-bold text-blue-700">{Array.from(new Set(teachers.flatMap((item) => item.subjects))).length}</div>
+          <div className="text-2xl font-bold text-blue-700">{Array.from(new Set(teachers.flatMap((item) => item.subjects ?? []))).length}</div>
           <div className="text-sm text-gray-600">Subjects covered</div>
         </div>
         <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-          <div className="text-2xl font-bold text-purple-700">{Array.from(new Set(teachers.flatMap((item) => item.batches))).length}</div>
+          <div className="text-2xl font-bold text-purple-700">{Array.from(new Set(teachers.flatMap((item) => item.batches ?? []))).length}</div>
           <div className="text-sm text-gray-600">Batches assigned</div>
         </div>
       </div>
@@ -243,7 +243,7 @@ const TeacherManagement: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-700">
                     <div className="flex flex-wrap gap-2">
-                      {teacher.subjects.map((subject) => (
+                      {(teacher.subjects ?? []).map((subject) => (
                         <span key={subject} className="rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700">
                           {subject}
                         </span>
@@ -252,7 +252,7 @@ const TeacherManagement: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-700">
                     <div className="flex flex-wrap gap-2">
-                      {teacher.batches.map((batch) => (
+                      {(teacher.batches ?? []).map((batch) => (
                         <span key={batch} className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
                           {batch}
                         </span>

@@ -8,6 +8,8 @@ const TeacherDashboard: React.FC = () => {
   const { user, currentClass } = useAuth();
   const [teacher, setTeacher] = useState<Teacher | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
+  const teacherBatches = teacher?.batches ?? [];
+  const teacherSubjects = teacher?.subjects ?? [];
 
   useEffect(() => {
     if (!currentClass?.id || !user?.email) return;
@@ -19,8 +21,8 @@ const TeacherDashboard: React.FC = () => {
   }, [currentClass?.id, user?.email]);
 
   const myStudents = useMemo(
-    () => students.filter((student) => teacher?.batches.includes(student.batch)),
-    [students, teacher]
+    () => students.filter((student) => teacherBatches.includes(student.batch)),
+    [students, teacherBatches]
   );
 
   return (
@@ -34,9 +36,9 @@ const TeacherDashboard: React.FC = () => {
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: 'My Batches', value: teacher?.batches.length ?? 0, icon: Calendar, color: 'from-blue-500 to-blue-600' },
+          { label: 'My Batches', value: teacherBatches.length, icon: Calendar, color: 'from-blue-500 to-blue-600' },
           { label: 'My Students', value: myStudents.length, icon: Users, color: 'from-green-500 to-green-600' },
-          { label: 'Subjects', value: teacher?.subjects.length ?? 0, icon: BookOpen, color: 'from-purple-500 to-purple-600' },
+          { label: 'Subjects', value: teacherSubjects.length, icon: BookOpen, color: 'from-purple-500 to-purple-600' },
           { label: 'Status', value: teacher ? 'Active' : 'Pending', icon: CheckCircle, color: 'from-orange-500 to-orange-600' },
         ].map((item) => {
           const Icon = item.icon;
@@ -60,25 +62,27 @@ const TeacherDashboard: React.FC = () => {
         <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-gray-900">Assigned Batches</h2>
           <div className="mt-4 space-y-4">
-            {teacher?.batches.map((batch) => (
+            {teacherBatches.map((batch) => (
               <div key={batch} className="rounded-xl border border-gray-100 p-4">
                 <div className="font-semibold text-gray-900">{batch}</div>
                 <div className="text-sm text-gray-600">
                   {myStudents.filter((student) => student.batch === batch).length} students
                 </div>
               </div>
-            )) ?? <p className="text-sm text-gray-500">No assignments yet.</p>}
+            ))}
+            {teacherBatches.length === 0 ? <p className="text-sm text-gray-500">No assignments yet.</p> : null}
           </div>
         </div>
 
         <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-gray-900">Subjects</h2>
           <div className="mt-4 flex flex-wrap gap-2">
-            {teacher?.subjects.map((subject) => (
+            {teacherSubjects.map((subject) => (
               <span key={subject} className="rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700">
                 {subject}
               </span>
-            )) ?? <p className="text-sm text-gray-500">No subjects yet.</p>}
+            ))}
+            {teacherSubjects.length === 0 ? <p className="text-sm text-gray-500">No subjects yet.</p> : null}
           </div>
         </div>
       </div>
