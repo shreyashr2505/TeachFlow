@@ -71,6 +71,73 @@ export interface NotificationJob {
   createdAt: string;
 }
 
+export interface Message {
+  id: string;
+  classId: string;
+  fromUserId: string;
+  fromUserName: string;
+  fromRole: User['role'];
+  toUserId?: string;
+  toRole?: User['role'];
+  subject?: string;
+  message: string;
+  status: 'sent' | 'read';
+  createdAt: string;
+  readAt?: string;
+}
+
+export interface ReportCardMark {
+  subject: string;
+  examType: string;
+  examName: string;
+  totalMarks: number;
+  obtainedMarks: number;
+  percentage: number;
+}
+
+export interface ReportCard {
+  id: string;
+  studentId: string;
+  classId: string;
+  attendance: {
+    total: number;
+    present: number;
+    absent: number;
+    percentage: number;
+  };
+  marks: ReportCardMark[];
+  aiSummary?: string;
+  aiStatus: 'not_requested' | 'pending' | 'ready' | 'failed';
+  generatedBy: string;
+  generatedAt: string;
+  updatedAt?: string;
+}
+
+export interface AnalyticsSnapshot {
+  id: string;
+  classId: string;
+  periodLabel: string;
+  attendancePercentage: number;
+  passPercentage: number;
+  topStudents: string[];
+  weakStudents: string[];
+  aiSummary?: string;
+  aiStatus: 'not_requested' | 'pending' | 'ready' | 'failed';
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface AIUsageLog {
+  id: string;
+  classId: string;
+  feature: 'class_analytics' | 'student_analysis' | 'improvement_plan' | 'admin_chat' | 'report_card';
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  monthKey: string;
+  createdAt: string;
+}
+
 export interface Student {
   id: string;
   name: string;

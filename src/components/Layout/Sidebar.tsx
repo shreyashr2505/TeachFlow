@@ -11,7 +11,9 @@ import {
   GraduationCap,
   ClipboardList,
   ShieldCheck,
-  Settings
+  Settings,
+  MessageSquare,
+  Building2
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -35,7 +37,11 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
           { id: 'marks', label: 'Marks', icon: FileText },
           { id: 'fees', label: 'Fees', icon: DollarSign },
           { id: 'approvals', label: 'User Approvals', icon: ShieldCheck },
-          { id: 'reports', label: 'Reports', icon: BarChart3 },
+          { id: 'messages', label: 'Messages', icon: MessageSquare },
+          { id: 'reports', label: 'Reports', icon: FileText },
+          { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+          { id: 'ai', label: 'AI Insights', icon: BarChart3 },
+          { id: 'branches', label: 'Branches', icon: Building2 },
           { id: 'settings', label: 'Class Settings', icon: Settings },
         ];
       case 'super_admin':
@@ -49,6 +55,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
           { id: 'attendance', label: 'Attendance', icon: ClipboardList },
           { id: 'marks', label: 'Enter Marks', icon: FileText },
           { id: 'students', label: 'My Students', icon: Users },
+          { id: 'messages', label: 'Messages', icon: MessageSquare },
         ];
       case 'student':
         return [
@@ -57,6 +64,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
           { id: 'attendance', label: 'My Attendance', icon: ClipboardList },
           { id: 'marks', label: 'My Marks', icon: FileText },
           { id: 'fees', label: 'Fee Status', icon: DollarSign },
+          { id: 'messages', label: 'Messages', icon: MessageSquare },
+          { id: 'reports', label: 'Reports', icon: FileText },
         ];
       case 'parent':
         return [
@@ -64,6 +73,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
           { id: 'attendance', label: "Child's Attendance", icon: ClipboardList },
           { id: 'marks', label: "Child's Marks", icon: FileText },
           { id: 'fees', label: 'Fee Status', icon: DollarSign },
+          { id: 'messages', label: 'Messages', icon: MessageSquare },
+          { id: 'reports', label: 'Reports', icon: FileText },
         ];
       default:
         return [];

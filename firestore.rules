@@ -1,7 +1,6 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
     function isSignedIn() {
       return request.auth != null;
     }
@@ -52,8 +51,42 @@ service cloud.firestore {
       return currentRole() == "parent" && classMember(classId);
     }
 
+    function anySharedClass(classIds) {
+      return hasUserDoc() &&
+        classIds is list &&
+        userDoc().data.classIds is list &&
+        classIds.hasAny(userDoc().data.classIds);
+    }
+
     function linkedStudentId() {
       return hasUserDoc() ? userDoc().data.linkedStudentId : null;
+    }
+
+    function studentPath(classId, studentId) {
+      return /databases/$(database)/documents/classes/$(classId)/students/$(studentId);
+    }
+
+    function studentExists(classId, studentId) {
+      return exists(studentPath(classId, studentId));
+    }
+
+    function studentDoc(classId, studentId) {
+      return get(studentPath(classId, studentId));
+    }
+
+    function isStudentOwner(classId, studentId) {
+      return classStudent(classId) &&
+        studentExists(classId, studentId) &&
+        studentDoc(classId, studentId).data.email == request.auth.token.email;
+    }
+
+    function isParentOfStudent(classId, studentId) {
+      return classParent(classId) &&
+        studentExists(classId, studentId) &&
+        (
+          linkedStudentId() == studentId ||
+          studentDoc(classId, studentId).data.parentEmail == request.auth.token.email
+        );
     }
 
     function inviteMatchesUser() {
@@ -62,72 +95,118 @@ service cloud.firestore {
     }
 
     function sharesClassAsAdmin(userData) {
-      return currentRole() == "admin" &&
-             userData.classIds is list &&
-             hasUserDoc() && userDoc().data.classIds is list &&
-             userData.classIds.hasAny(userDoc().data.classIds);
+      return currentRole() == "admin" && anySharedClass(userData.classIds);
     }
 
     match /users/{userId} {
       allow create: if isSelf(userId);
-      allow read: if isSelf(userId) || isSuperAdmin() || sharesClassAsAdmin(resource.data);
+      allow read: if isSelf(userId) || isSuperAdmin() || anySharedClass(resource.data.classIds);
       allow update: if isSelf(userId) || isSuperAdmin() || sharesClassAsAdmin(resource.data);
       allow delete: if isSuperAdmin() || sharesClassAsAdmin(resource.data);
     }
 
     match /classes/{classId} {
       allow read: if true;
-
-      allow create: if isSignedIn() &&
-        request.resource.data.adminId == request.auth.uid;
-
+      allow create: if isSignedIn() && request.resource.data.adminId == request.auth.uid;
       allow update, delete: if classAdmin(classId) || isSuperAdmin();
 
       match /students/{studentId} {
-        allow read: if isSignedIn();
+        allow read: if classAdmin(classId) || classTeacher(classId) || isSuperAdmin() ||
+          isStudentOwner(classId, studentId) || isParentOfStudent(classId, studentId);
         allow write: if classAdmin(classId) || isSuperAdmin();
       }
 
       match /teachers/{teacherId} {
-        allow read: if isSignedIn();
+        allow read: if classMember(classId) || isSuperAdmin();
         allow write: if classAdmin(classId) || isSuperAdmin();
       }
 
       match /lectures/{lectureId} {
-        allow read: if isSignedIn();
+        allow read: if classMember(classId) || isSuperAdmin();
         allow write: if classAdmin(classId) || classTeacher(classId) || isSuperAdmin();
       }
 
       match /attendance/{attendanceId} {
-        allow read: if isSignedIn();
+        allow read: if classAdmin(classId) || classTeacher(classId) || isSuperAdmin() ||
+          isStudentOwner(classId, resource.data.studentId) ||
+          isParentOfStudent(classId, resource.data.studentId);
         allow write: if classAdmin(classId) || classTeacher(classId) || isSuperAdmin();
       }
 
       match /marks/{markId} {
-        allow read: if isSignedIn();
-        allow write: if classAdmin(classId) || isSuperAdmin();
+        allow read: if classAdmin(classId) || classTeacher(classId) || isSuperAdmin() ||
+          isStudentOwner(classId, resource.data.studentId) ||
+          isParentOfStudent(classId, resource.data.studentId);
+        allow write: if classAdmin(classId) || classTeacher(classId) || isSuperAdmin();
       }
 
       match /fees/{feeId} {
-        allow read: if isSignedIn();
+        allow read: if classAdmin(classId) || classTeacher(classId) || isSuperAdmin() ||
+          isStudentOwner(classId, resource.data.studentId) ||
+          isParentOfStudent(classId, resource.data.studentId);
         allow write: if classAdmin(classId) || isSuperAdmin();
+      }
+
+      match /auditLogs/{logId} {
+        allow read: if classAdmin(classId) || isSuperAdmin();
+        allow create: if classAdmin(classId) || classTeacher(classId) || isSuperAdmin();
+        allow update, delete: if false;
       }
     }
 
     match /invites/{inviteId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
+      allow read: if isSuperAdmin() || classAdmin(resource.data.classId) || inviteMatchesUser();
+      allow create: if isSuperAdmin() || classAdmin(request.resource.data.classId);
+      allow update: if isSuperAdmin() || classAdmin(resource.data.classId) || inviteMatchesUser();
       allow delete: if false;
     }
 
     match /notifications/{notificationId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
+      allow read: if isSuperAdmin() || classMember(resource.data.classId);
+      allow create: if isSuperAdmin() ||
+        classAdmin(request.resource.data.classId) ||
+        classTeacher(request.resource.data.classId);
+    }
+
+    match /messages/{messageId} {
+      allow read: if isSuperAdmin() ||
+        classAdmin(resource.data.classId) ||
+        isSelf(resource.data.fromUserId) ||
+        isSelf(resource.data.toUserId);
+      allow create: if isSuperAdmin() ||
+        (classMember(request.resource.data.classId) && isSelf(request.resource.data.fromUserId));
+      allow update: if isSuperAdmin() ||
+        classAdmin(resource.data.classId) ||
+        isSelf(resource.data.toUserId);
+      allow delete: if isSuperAdmin() || classAdmin(resource.data.classId);
+    }
+
+    match /reports/{reportId} {
+      allow read: if isSuperAdmin() ||
+        classAdmin(resource.data.classId) ||
+        classTeacher(resource.data.classId) ||
+        isStudentOwner(resource.data.classId, resource.data.studentId) ||
+        isParentOfStudent(resource.data.classId, resource.data.studentId);
+      allow create, update: if isSuperAdmin() ||
+        classAdmin(request.resource.data.classId) ||
+        classTeacher(request.resource.data.classId);
+      allow delete: if isSuperAdmin() || classAdmin(resource.data.classId);
+    }
+
+    match /analyticsSnapshots/{snapshotId} {
+      allow read: if isSuperAdmin() || classAdmin(resource.data.classId);
+      allow create, update: if isSuperAdmin() || classAdmin(request.resource.data.classId);
+      allow delete: if isSuperAdmin() || classAdmin(resource.data.classId);
+    }
+
+    match /aiUsageLogs/{logId} {
+      allow read: if isSuperAdmin() || classAdmin(resource.data.classId);
+      allow create: if isSuperAdmin() || classAdmin(request.resource.data.classId);
+      allow update, delete: if false;
     }
 
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if false;
     }
   }
 }

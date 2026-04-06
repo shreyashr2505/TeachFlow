@@ -63,6 +63,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) => {
     { id: 'attendance', title: 'Attendance', description: 'Track lecture attendance', icon: Calendar },
     { id: 'marks', title: 'Marks', description: 'Enter performance data', icon: FileText },
     { id: 'fees', title: 'Fees', description: 'Manage billing status', icon: DollarSign },
+    { id: 'messages', title: 'Messages', description: 'Handle daily communication', icon: Users },
+    { id: 'reports', title: 'Report Cards', description: 'Generate report cards', icon: FileText },
+    { id: 'analytics', title: 'Analytics', description: 'See class insights', icon: BarChart3 },
+    { id: 'ai', title: 'AI Insights', description: 'Run admin-only AI tools', icon: TrendingUp },
+    { id: 'branches', title: 'Branches', description: 'Manage multi-branch SaaS', icon: BookOpen },
   ];
 
   const baseUrl = window.location.origin;

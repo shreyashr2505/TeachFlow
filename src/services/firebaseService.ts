@@ -19,12 +19,16 @@ import {
 import { db } from './firebase';
 import {
   Attendance,
+  AnalyticsSnapshot,
   CoachingClass,
   Fee,
   Invite,
   Lecture,
   Marks,
+  AIUsageLog,
+  Message,
   NotificationJob,
+  ReportCard,
   Student,
   Teacher,
   User,
@@ -61,6 +65,10 @@ const withErrorHandling = async <T>(message: string, action: () => Promise<T>) =
 const usersCollection = collection(db, 'users');
 const classesCollection = collection(db, 'classes');
 const invitesCollection = collection(db, 'invites');
+const messagesCollection = collection(db, 'messages');
+const reportsCollection = collection(db, 'reports');
+const analyticsSnapshotsCollection = collection(db, 'analyticsSnapshots');
+const aiUsageCollection = collection(db, 'aiUsageLogs');
 
 const classStudentsCollection = (classId: string) => collection(db, 'classes', classId, 'students');
 const classTeachersCollection = (classId: string) => collection(db, 'classes', classId, 'teachers');
@@ -132,6 +140,27 @@ const normalizeAuditLog = (log: AuditLog): AuditLog => ({
 const normalizeNotification = (notification: NotificationJob): NotificationJob => ({
   ...notification,
   createdAt: toIsoString(notification.createdAt),
+});
+const normalizeMessage = (message: Message): Message => ({
+  ...message,
+  createdAt: toIsoString(message.createdAt),
+  readAt: message.readAt ? toIsoString(message.readAt) : undefined,
+});
+const normalizeReportCard = (report: ReportCard): ReportCard => ({
+  ...report,
+  generatedAt: toIsoString(report.generatedAt),
+  updatedAt: report.updatedAt ? toIsoString(report.updatedAt) : undefined,
+  aiStatus: report.aiStatus ?? 'not_requested',
+});
+const normalizeAnalyticsSnapshot = (snapshot: AnalyticsSnapshot): AnalyticsSnapshot => ({
+  ...snapshot,
+  createdAt: toIsoString(snapshot.createdAt),
+  updatedAt: snapshot.updatedAt ? toIsoString(snapshot.updatedAt) : undefined,
+  aiStatus: snapshot.aiStatus ?? 'not_requested',
+});
+const normalizeAIUsageLog = (entry: AIUsageLog): AIUsageLog => ({
+  ...entry,
+  createdAt: toIsoString(entry.createdAt),
 });
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -508,6 +537,162 @@ export const firebaseService = {
     });
   },
 
+  async createMessage(messageData: Omit<Message, 'id' | 'createdAt' | 'status' | 'readAt'>) {
+    return withErrorHandling('Failed to send message.', async () => {
+      const docRef = await addDoc(messagesCollection, {
+        ...sanitizeFirestoreData(messageData),
+        status: 'sent',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      const snapshot = await getDoc(docRef);
+      return normalizeMessage(mapDoc<Message>(snapshot));
+    });
+  },
+
+  async markMessageAsRead(messageId: string) {
+    return withErrorHandling('Failed to mark message as read.', async () => {
+      await updateDoc(doc(messagesCollection, messageId), {
+        status: 'read',
+        readAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    });
+  },
+
+  subscribeToMessagesForClass(classId: string, callback: (messages: Message[]) => void, onError?: (error: Error) => void) {
+    return onSnapshot(
+      query(messagesCollection, where('classId', '==', classId), orderBy('createdAt', 'desc')),
+      (snapshot) => callback(snapshot.docs.map((item) => normalizeMessage(mapDoc<Message>(item)))),
+      (error) => onError?.(new ServiceError('Failed to listen to messages.', error))
+    );
+  },
+
+  subscribeToMessagesForUser(
+    classId: string,
+    userId: string,
+    callback: (messages: Message[]) => void,
+    onError?: (error: Error) => void
+  ) {
+    return onSnapshot(
+      query(messagesCollection, where('classId', '==', classId), where('toUserId', '==', userId), orderBy('createdAt', 'desc')),
+      (snapshot) => callback(snapshot.docs.map((item) => normalizeMessage(mapDoc<Message>(item)))),
+      (error) => onError?.(new ServiceError('Failed to listen to user messages.', error))
+    );
+  },
+
+  subscribeToMessagesSentByUser(
+    classId: string,
+    userId: string,
+    callback: (messages: Message[]) => void,
+    onError?: (error: Error) => void
+  ) {
+    return onSnapshot(
+      query(messagesCollection, where('classId', '==', classId), where('fromUserId', '==', userId), orderBy('createdAt', 'desc')),
+      (snapshot) => callback(snapshot.docs.map((item) => normalizeMessage(mapDoc<Message>(item)))),
+      (error) => onError?.(new ServiceError('Failed to listen to sent messages.', error))
+    );
+  },
+
+  async createReport(reportData: Omit<ReportCard, 'id' | 'generatedAt' | 'updatedAt'>) {
+    return withErrorHandling('Failed to create report card.', async () => {
+      const docRef = await addDoc(reportsCollection, {
+        ...sanitizeFirestoreData(reportData),
+        aiStatus: reportData.aiStatus ?? 'not_requested',
+        generatedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      const snapshot = await getDoc(docRef);
+      return normalizeReportCard(mapDoc<ReportCard>(snapshot));
+    });
+  },
+
+  async updateReport(reportId: string, reportData: Partial<ReportCard>) {
+    return withErrorHandling('Failed to update report card.', async () => {
+      await updateDoc(doc(reportsCollection, reportId), {
+        ...sanitizeFirestoreData(reportData),
+        updatedAt: serverTimestamp(),
+      });
+    });
+  },
+
+  subscribeToReportsByStudent(
+    classId: string,
+    studentId: string,
+    callback: (reports: ReportCard[]) => void,
+    onError?: (error: Error) => void
+  ) {
+    return onSnapshot(
+      query(reportsCollection, where('classId', '==', classId), where('studentId', '==', studentId), orderBy('generatedAt', 'desc')),
+      (snapshot) => callback(snapshot.docs.map((item) => normalizeReportCard(mapDoc<ReportCard>(item)))),
+      (error) => onError?.(new ServiceError('Failed to listen to report cards.', error))
+    );
+  },
+
+  subscribeToClassReports(classId: string, callback: (reports: ReportCard[]) => void, onError?: (error: Error) => void) {
+    return onSnapshot(
+      query(reportsCollection, where('classId', '==', classId), orderBy('generatedAt', 'desc')),
+      (snapshot) => callback(snapshot.docs.map((item) => normalizeReportCard(mapDoc<ReportCard>(item)))),
+      (error) => onError?.(new ServiceError('Failed to listen to class reports.', error))
+    );
+  },
+
+  async createAnalyticsSnapshot(snapshotData: Omit<AnalyticsSnapshot, 'id' | 'createdAt' | 'updatedAt'>) {
+    return withErrorHandling('Failed to create analytics snapshot.', async () => {
+      const docRef = await addDoc(analyticsSnapshotsCollection, {
+        ...sanitizeFirestoreData(snapshotData),
+        aiStatus: snapshotData.aiStatus ?? 'not_requested',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      const snapshot = await getDoc(docRef);
+      return normalizeAnalyticsSnapshot(mapDoc<AnalyticsSnapshot>(snapshot));
+    });
+  },
+
+  subscribeToAnalyticsSnapshots(
+    classId: string,
+    callback: (snapshots: AnalyticsSnapshot[]) => void,
+    onError?: (error: Error) => void
+  ) {
+    return onSnapshot(
+      query(analyticsSnapshotsCollection, where('classId', '==', classId), orderBy('createdAt', 'desc')),
+      (snapshot) => callback(snapshot.docs.map((item) => normalizeAnalyticsSnapshot(mapDoc<AnalyticsSnapshot>(item)))),
+      (error) => onError?.(new ServiceError('Failed to listen to analytics snapshots.', error))
+    );
+  },
+
+  async createAIUsageLog(entry: Omit<AIUsageLog, 'id' | 'createdAt'>) {
+    return withErrorHandling('Failed to store AI usage.', async () => {
+      const docRef = await addDoc(aiUsageCollection, {
+        ...sanitizeFirestoreData(entry),
+        createdAt: serverTimestamp(),
+      });
+      const snapshot = await getDoc(docRef);
+      return normalizeAIUsageLog(mapDoc<AIUsageLog>(snapshot));
+    });
+  },
+
+  async getAIUsageForMonth(classId: string, monthKey: string) {
+    return withErrorHandling('Failed to load AI usage.', async () => {
+      const snapshot = await getDocs(query(aiUsageCollection, where('classId', '==', classId), where('monthKey', '==', monthKey)));
+      return snapshot.docs.reduce((sum, item) => sum + Number(item.data().totalTokens ?? 0), 0);
+    });
+  },
+
+  subscribeToAIUsageForMonth(
+    classId: string,
+    monthKey: string,
+    callback: (entries: AIUsageLog[]) => void,
+    onError?: (error: Error) => void
+  ) {
+    return onSnapshot(
+      query(aiUsageCollection, where('classId', '==', classId), where('monthKey', '==', monthKey), orderBy('createdAt', 'desc')),
+      (snapshot) => callback(snapshot.docs.map((item) => normalizeAIUsageLog(mapDoc<AIUsageLog>(item)))),
+      (error) => onError?.(new ServiceError('Failed to listen to AI usage.', error))
+    );
+  },
+
   subscribeToStudents(classId: string, callback: (students: Student[]) => void, onError?: (error: Error) => void) {
     return onSnapshot(
       query(classStudentsCollection(classId), orderBy('joinedAt', 'desc')),
@@ -529,6 +714,14 @@ export const firebaseService = {
       classesCollection,
       (snapshot) => callback(snapshot.docs.map((item) => normalizeClass(mapDoc<CoachingClass>(item)))),
       (error) => onError?.(new ServiceError('Failed to listen to classes.', error))
+    );
+  },
+
+  subscribeToClassUsers(classId: string, callback: (users: User[]) => void, onError?: (error: Error) => void) {
+    return onSnapshot(
+      query(usersCollection, where('classIds', 'array-contains', classId)),
+      (snapshot) => callback(snapshot.docs.map((item) => normalizeUser(mapDoc<User>(item)))),
+      (error) => onError?.(new ServiceError('Failed to listen to class users.', error))
     );
   },
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { firebaseService } from '../../services/firebaseService';
 import { ShieldCheck, UserPlus, Settings as SettingsIcon } from 'lucide-react';
@@ -15,6 +15,11 @@ const SettingsManagement: React.FC = () => {
   
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
+
+  useEffect(() => {
+    setRequireApproval(currentClass?.settings?.requireApproval ?? true);
+    setAllowSelfRegistration(currentClass?.settings?.allowSelfRegistration ?? true);
+  }, [currentClass?.id, currentClass?.settings?.allowSelfRegistration, currentClass?.settings?.requireApproval]);
 
   const handleSave = async () => {
     if (!currentClass?.id) return;

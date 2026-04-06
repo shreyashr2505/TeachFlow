@@ -21,6 +21,11 @@ import FeeManagement from './components/Management/FeeManagement';
 import UserApprovals from './components/Management/UserApprovals';
 import SettingsManagement from './components/Management/SettingsManagement';
 import ErrorBoundary from './components/Common/ErrorBoundary';
+import BranchManagement from './components/Management/BranchManagement';
+import MessagingCenter from './components/Management/MessagingCenter';
+import ReportCardManagement from './components/Management/ReportCardManagement';
+import AnalyticsDashboard from './components/Management/AnalyticsDashboard';
+import AdminAIWorkspace from './components/Management/AdminAIWorkspace';
 
 const Unauthorized: React.FC = () => (
   <div className="p-8 text-center">
@@ -55,6 +60,29 @@ const PendingApprovalScreen: React.FC = () => {
 const LoadingScreen: React.FC = () => (
   <div className="min-h-screen bg-gray-100 flex items-center justify-center">
     <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+  </div>
+);
+
+const BranchSelectionScreen: React.FC<{ classes: Array<{ id: string; name: string; subdomain: string }>; onSelect: (classId: string, subdomain: string) => void }> = ({ classes, onSelect }) => (
+  <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-orange-50 flex items-center justify-center px-4">
+    <div className="w-full max-w-2xl rounded-3xl border border-gray-100 bg-white p-8 shadow-xl">
+      <div className="text-center">
+        <h1 className="text-3xl font-bold text-gray-900">Select Branch</h1>
+        <p className="mt-2 text-gray-600">You are linked to multiple branches. Choose the workspace you want to open now.</p>
+      </div>
+      <div className="mt-8 grid gap-4 md:grid-cols-3">
+        {classes.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => onSelect(item.id, item.subdomain)}
+            className="rounded-2xl border border-gray-200 bg-white p-5 text-left transition hover:border-blue-300 hover:bg-blue-50"
+          >
+            <div className="text-lg font-semibold text-gray-900">{item.name}</div>
+            <div className="mt-2 text-sm text-gray-500">/{item.subdomain}</div>
+          </button>
+        ))}
+      </div>
+    </div>
   </div>
 );
 
@@ -184,10 +212,18 @@ const TenantAppShell: React.FC = () => {
           return <FeeManagement />;
         case 'approvals':
           return <UserApprovals />;
+        case 'messages':
+          return <MessagingCenter />;
         case 'settings':
           return <SettingsManagement />;
         case 'reports':
-          return <div className="p-8 text-center text-gray-500">Reports - Coming Soon</div>;
+          return <ReportCardManagement />;
+        case 'analytics':
+          return <AnalyticsDashboard />;
+        case 'ai':
+          return <AdminAIWorkspace />;
+        case 'branches':
+          return <BranchManagement />;
         default:
           return <AdminDashboard onNavigate={setActiveTab} />;
       }
@@ -205,6 +241,8 @@ const TenantAppShell: React.FC = () => {
           return <MarksManagement />;
         case 'students':
           return <StudentManagement />;
+        case 'messages':
+          return <MessagingCenter />;
         default:
           return <TeacherDashboard />;
       }
@@ -222,6 +260,10 @@ const TenantAppShell: React.FC = () => {
           return <StudentDashboard initialTab="marks" />;
         case 'fees':
           return <StudentDashboard initialTab="fees" />;
+        case 'messages':
+          return <MessagingCenter />;
+        case 'reports':
+          return <ReportCardManagement />;
         default:
           return <StudentDashboard />;
       }
@@ -237,6 +279,10 @@ const TenantAppShell: React.FC = () => {
           return <ParentDashboard initialTab="marks" />;
         case 'fees':
           return <ParentDashboard initialTab="fees" />;
+        case 'messages':
+          return <MessagingCenter />;
+        case 'reports':
+          return <ReportCardManagement />;
         default:
           return <ParentDashboard />;
       }
@@ -260,7 +306,8 @@ const LoginScreen: React.FC<{ tenantSlug?: string; initialMode?: 'login' | 'sign
   tenantSlug,
   initialMode = 'login',
 }) => {
-  const { user, currentClass, classes, isLoading } = useAuth();
+  const { user, currentClass, classes, isLoading, switchClass } = useAuth();
+  const navigate = useNavigate();
 
   if (isLoading) {
     return <LoadingScreen />;
@@ -278,6 +325,18 @@ const LoginScreen: React.FC<{ tenantSlug?: string; initialMode?: 'login' | 'sign
     const targetClass = tenantSlug
       ? classes.find((item) => item.subdomain === tenantSlug) ?? currentClass ?? classes[0]
       : currentClass ?? classes[0];
+
+    if (!tenantSlug && classes.length > 1) {
+      return (
+        <BranchSelectionScreen
+          classes={classes}
+          onSelect={(classId, subdomain) => {
+            void switchClass(classId);
+            navigate(`/${subdomain}`);
+          }}
+        />
+      );
+    }
 
     if (targetClass) {
       return <Navigate to={`/${targetClass.subdomain}`} replace />;
