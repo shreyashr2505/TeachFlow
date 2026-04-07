@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Bot, FileText, Sparkles } from 'lucide-react';
+import { Bot, Download, FileText, Sparkles } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { aiService } from '../../services/aiService';
 import { firebaseService } from '../../services/firebaseService';
@@ -219,13 +219,24 @@ const ReportCardManagement: React.FC = () => {
                         <div>Attendance: {report.attendance.percentage}%</div>
                         <div>Subjects: {report.marks.length}</div>
                       </div>
-                      <button
-                        onClick={() => void handleGenerateAISummary(report)}
-                        disabled={activeAction !== ''}
-                        className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-                      >
-                        {activeAction === report.id ? 'Generating AI Summary...' : 'Generate AI Report Summary'}
-                      </button>
+                      <div className="mt-4 flex flex-wrap gap-3">
+                        {student ? (
+                          <button
+                            onClick={() => pdfService.downloadReportCard(report, student, currentClass)}
+                            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                          >
+                            <Download className="h-4 w-4" />
+                            <span>Download PDF</span>
+                          </button>
+                        ) : null}
+                        <button
+                          onClick={() => void handleGenerateAISummary(report)}
+                          disabled={activeAction !== ''}
+                          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                        >
+                          {activeAction === report.id ? 'Generating AI Summary...' : 'Generate AI Report Summary'}
+                        </button>
+                      </div>
                       {report.aiSummary ? <p className="mt-3 text-sm text-gray-700">{report.aiSummary}</p> : null}
                     </div>
                   );
@@ -258,6 +269,15 @@ const ReportCardManagement: React.FC = () => {
                       </div>
                     ))}
                   </div>
+                  {targetStudent ? (
+                    <button
+                      onClick={() => pdfService.downloadReportCard(report, targetStudent, currentClass)}
+                      className="mt-4 inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      <Download className="h-4 w-4" />
+                      <span>Download PDF</span>
+                    </button>
+                  ) : null}
                   {report.aiSummary ? <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">{report.aiSummary}</div> : null}
                 </div>
               ))

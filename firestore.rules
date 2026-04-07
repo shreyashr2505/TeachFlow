@@ -115,7 +115,7 @@ service cloud.firestore {
       allow update, delete: if classAdmin(classId) || isSuperAdmin();
 
       match /students/{studentId} {
-        allow read: if classAdmin(classId) || classTeacher(classId) || isSuperAdmin() ||
+        allow read: if classMember(classId) || isSuperAdmin() ||
           isStudentOwner(classId, studentId) || isParentOfStudent(classId, studentId);
         allow write: if classAdmin(classId) || isSuperAdmin();
       }
@@ -181,7 +181,8 @@ service cloud.firestore {
       allow read: if isSuperAdmin() ||
         classAdmin(resource.data.classId) ||
         isSelf(resource.data.fromUserId) ||
-        isSelf(resource.data.toUserId);
+        isSelf(resource.data.toUserId) ||
+        classMember(resource.data.classId);
       allow create: if isSuperAdmin() ||
         (classMember(request.resource.data.classId) && isSelf(request.resource.data.fromUserId));
       allow update: if isSuperAdmin() ||
@@ -203,13 +204,13 @@ service cloud.firestore {
     }
 
     match /analyticsSnapshots/{snapshotId} {
-      allow read: if isSuperAdmin() || classAdmin(resource.data.classId);
+      allow read: if isSuperAdmin() || classMember(resource.data.classId);
       allow create, update: if isSuperAdmin() || classAdmin(request.resource.data.classId);
       allow delete: if isSuperAdmin() || classAdmin(resource.data.classId);
     }
 
     match /aiUsageLogs/{logId} {
-      allow read: if isSuperAdmin() || classAdmin(resource.data.classId);
+      allow read: if isSuperAdmin() || classMember(resource.data.classId);
       allow create: if isSuperAdmin() || classAdmin(request.resource.data.classId);
       allow update, delete: if false;
     }

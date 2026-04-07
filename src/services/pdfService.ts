@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Attendance, CoachingClass, Fee, FeePayment, Marks, Student } from '../types';
+import { Attendance, CoachingClass, Fee, FeePayment, Marks, ReportCard, Student } from '../types';
 
 const addHeader = (doc: jsPDF, title: string, coachingClass?: CoachingClass | null) => {
   doc.setFillColor(37, 99, 235);
@@ -152,5 +152,52 @@ export const pdfService = {
     });
 
     saveDocument(doc, `${student.rollNumber}-fee-summary.pdf`);
+  },
+
+  downloadReportCard(report: ReportCard, student: Student, coachingClass?: CoachingClass | null) {
+    const doc = new jsPDF();
+    addHeader(doc, 'TeachFlow Report Card', coachingClass);
+    addMeta(doc);
+    addStudentCard(doc, student);
+
+    autoTable(doc, {
+      startY: 86,
+      head: [['Attendance', 'Present', 'Absent', 'Percentage']],
+      body: [[
+        report.attendance.total,
+        report.attendance.present,
+        report.attendance.absent,
+        `${report.attendance.percentage}%`,
+      ]],
+      theme: 'grid',
+      headStyles: { fillColor: [37, 99, 235] },
+    });
+
+    autoTable(doc, {
+      startY: ((doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 100) + 10,
+      head: [['Subject', 'Exam', 'Type', 'Score', 'Percentage']],
+      body: report.marks.map((mark) => [
+        mark.subject,
+        mark.examName,
+        mark.examType,
+        `${mark.obtainedMarks}/${mark.totalMarks}`,
+        `${mark.percentage}%`,
+      ]),
+      theme: 'striped',
+      headStyles: { fillColor: [79, 70, 229] },
+    });
+
+    if (report.aiSummary) {
+      const startY = ((doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 140) + 12;
+      doc.setFontSize(12);
+      doc.setTextColor(17, 24, 39);
+      doc.text('AI Summary', 14, startY);
+      doc.setFontSize(10);
+      doc.setTextColor(75, 85, 99);
+      const lines = doc.splitTextToSize(report.aiSummary, 180);
+      doc.text(lines, 14, startY + 8);
+    }
+
+    saveDocument(doc, `${student.rollNumber}-report-card.pdf`);
   },
 };

@@ -1216,6 +1216,25 @@ export const firebaseService = {
           }),
           { merge: true }
         );
+
+        await setDoc(
+          doc(classFeesCollection(input.classId), input.userId),
+          sanitizeFirestoreData({
+            studentId: input.userId,
+            studentName: userData.name,
+            amount: 0,
+            dueDate: new Date().toISOString().slice(0, 10),
+            status: 'due',
+            paidAmount: 0,
+            classId: input.classId,
+            description: 'Tuition Fee',
+            installments: [],
+            paymentHistory: [],
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          }),
+          { merge: true }
+        );
       }
 
       if (input.role === 'teacher') {
