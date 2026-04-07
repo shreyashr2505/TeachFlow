@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { ArrowRight, ChevronRight, LogOut, RefreshCw, Route, School, ShieldCheck, Users } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ArrowRight, ChevronRight, LogOut, MessageSquare, RefreshCw, Route, School, ShieldCheck, Users } from 'lucide-react';
 import { Navigate, Route as RouterRoute, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAuth, AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -199,6 +199,69 @@ const StudentAssignmentGate: React.FC = () => {
   }
 
   return <TenantAppShell />;
+};
+
+const MessageNotificationCenter: React.FC = () => {
+  const { user, currentClass } = useAuth();
+  const seenMessageIdsRef = useRef<Set<string>>(new Set());
+  const [notification, setNotification] = useState<{ id: string; from: string; subject: string } | null>(null);
+
+  useEffect(() => {
+    seenMessageIdsRef.current = new Set();
+    setNotification(null);
+  }, [currentClass?.id, user?.id]);
+
+  useEffect(() => {
+    if (!currentClass?.id || !user?.id) return;
+
+    return firebaseService.subscribeToMessagesForUser(currentClass.id, user.id, (incoming) => {
+      const seen = seenMessageIdsRef.current;
+      if (seen.size === 0) {
+        incoming.forEach((message) => seen.add(message.id));
+        return;
+      }
+
+      const newestMessage = incoming.find((message) => !seen.has(message.id));
+      incoming.forEach((message) => seen.add(message.id));
+
+      if (newestMessage) {
+        setNotification({
+          id: newestMessage.id,
+          from: newestMessage.fromUserName,
+          subject: newestMessage.subject ?? 'New message',
+        });
+      }
+    });
+  }, [currentClass?.id, user?.id]);
+
+  useEffect(() => {
+    if (!notification) return;
+    const timeoutId = window.setTimeout(() => setNotification(null), 5000);
+    return () => window.clearTimeout(timeoutId);
+  }, [notification]);
+
+  if (!notification) return null;
+
+  return (
+    <div className="fixed right-4 top-20 z-50 w-full max-w-sm rounded-2xl border border-blue-100 bg-white p-4 shadow-xl">
+      <div className="flex items-start gap-3">
+        <div className="rounded-xl bg-blue-100 p-2 text-blue-700">
+          <MessageSquare className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-gray-900">New message received</div>
+          <div className="mt-1 text-sm text-gray-600">From {notification.from}</div>
+          <div className="mt-1 truncate text-sm text-blue-700">{notification.subject}</div>
+        </div>
+        <button
+          onClick={() => setNotification(null)}
+          className="text-xs font-medium text-gray-400 hover:text-gray-600"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  );
 };
 
 const BranchSelectionScreen: React.FC<{ classes: Array<{ id: string; name: string; subdomain: string }>; onSelect: (classId: string, subdomain: string) => void }> = ({ classes, onSelect }) => (
@@ -434,6 +497,7 @@ const TenantAppShell: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
+      <MessageNotificationCenter />
       <div className="flex">
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
         <main className="flex-1 p-8">{renderContent()}</main>

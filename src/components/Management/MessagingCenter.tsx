@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { firebaseService } from '../../services/firebaseService';
 import FeedbackMessage from '../Common/FeedbackMessage';
 import EmptyState from '../Common/EmptyState';
-import { Message, User } from '../../types';
+import { Message, Teacher, User } from '../../types';
 
 const MessagingCenter: React.FC = () => {
   const { user, currentClass } = useAuth();
@@ -19,7 +19,7 @@ const MessagingCenter: React.FC = () => {
   });
 
   useEffect(() => {
-    if (!currentClass?.id) return;
+    if (!currentClass?.id || !user) return;
     const messageUnsub = user?.role === 'admin'
       ? firebaseService.subscribeToMessagesForClass(currentClass.id, setMessages, (err) => setError(err.message))
       : undefined;
@@ -42,15 +42,63 @@ const MessagingCenter: React.FC = () => {
         }, (err) => setError(err.message))
       : undefined;
 
-    const usersUnsub = firebaseService.subscribeToClassUsers(currentClass.id, setClassUsers, (err) => setError(err.message));
+    let usersUnsub: (() => void) | undefined;
+    let isMounted = true;
+
+    const loadRecipients = async () => {
+      setError('');
+
+      if (user.role === 'admin') {
+        usersUnsub = firebaseService.subscribeToClassUsers(currentClass.id, setClassUsers, (err) => setError(err.message));
+        return;
+      }
+
+      try {
+        const adminUser = await firebaseService.getUserProfile(currentClass.adminId);
+        if (!isMounted) return;
+
+        const adminRecipients = adminUser ? [adminUser] : [];
+
+        if (user.role === 'teacher') {
+          setClassUsers(adminRecipients);
+          return;
+        }
+
+        usersUnsub = firebaseService.subscribeToTeachers(
+          currentClass.id,
+          (teachers) => {
+            if (!isMounted) return;
+            const teacherRecipients: User[] = teachers.map((teacher: Teacher) => ({
+              id: teacher.id,
+              name: teacher.name,
+              email: teacher.email,
+              role: 'teacher',
+              approved: true,
+              createdAt: teacher.joinedAt,
+              classId: teacher.classId,
+              classIds: [teacher.classId],
+              activeClassId: teacher.classId,
+            }));
+            setClassUsers([...adminRecipients, ...teacherRecipients]);
+          },
+          (err) => setError(err.message)
+        );
+      } catch (err) {
+        if (!isMounted) return;
+        setError(err instanceof Error ? err.message : 'Failed to load message recipients.');
+      }
+    };
+
+    void loadRecipients();
 
     return () => {
+      isMounted = false;
       messageUnsub?.();
       inboxUnsub?.();
       sentUnsub?.();
-      usersUnsub();
+      usersUnsub?.();
     };
-  }, [currentClass?.id, user]);
+  }, [currentClass?.adminId, currentClass?.id, user]);
 
   const recipientOptions = useMemo(() => {
     if (!user) return [];

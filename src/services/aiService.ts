@@ -46,7 +46,14 @@ const generateAI = async (prompt: string) => {
   });
 
   if (!response.ok) {
-    throw new Error(`AI request failed with status ${response.status}.`);
+    let detail = '';
+    try {
+      const payload = await response.json();
+      detail = payload?.error?.message ? ` ${payload.error.message}` : '';
+    } catch {
+      detail = '';
+    }
+    throw new Error(`AI request failed with status ${response.status}.${detail}`);
   }
 
   const payload = await response.json();
