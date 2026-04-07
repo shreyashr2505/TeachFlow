@@ -3,6 +3,7 @@ import {
   arrayUnion,
   collection,
   deleteDoc,
+  documentId,
   doc,
   getDoc,
   getDocs,
@@ -160,6 +161,11 @@ const normalizeUser = (user: User): User => ({
   branchIds: asStringArray(user.branchIds),
   subscriptionPlan: ['free', 'standard', 'pro'].includes(asString(user.subscriptionPlan)) ? user.subscriptionPlan : undefined,
   linkedStudentId: asNullableString(user.linkedStudentId),
+  linkedStudentIds: asStringArray(user.linkedStudentIds).length > 0
+    ? asStringArray(user.linkedStudentIds)
+    : asNullableString(user.linkedStudentId)
+      ? [asString(user.linkedStudentId)]
+      : [],
   batchId: asNullableString(user.batchId),
 });
 
@@ -194,6 +200,7 @@ const normalizeStudent = (student: Student): Student => ({
   phone: asNullableString(student.phone),
   batch: asString(student.batch, 'Batch A'),
   batchId: asNullableString(student.batchId),
+  parentIds: asStringArray(student.parentIds),
   parentEmail: asNullableString(student.parentEmail),
   parentId: asNullableString(student.parentId),
   parentPhone: asNullableString(student.parentPhone),
@@ -440,6 +447,7 @@ const prepareUserForWrite = (user: Omit<User, 'createdAt'> & { createdAt?: strin
   ...sanitizeFirestoreData(user),
   classIds: asStringArray(user.classIds ?? (user.classId ? [user.classId] : [])),
   branchIds: asStringArray(user.branchIds),
+  linkedStudentIds: asStringArray(user.linkedStudentIds ?? (user.linkedStudentId ? [user.linkedStudentId] : [])),
   batchId: asNullableString(user.batchId) ?? null,
 });
 
@@ -1087,6 +1095,24 @@ export const firebaseService = {
     );
   },
 
+  subscribeToStudentsByIds(
+    classId: string,
+    studentIds: string[],
+    callback: (students: Student[]) => void,
+    onError?: (error: Error) => void
+  ) {
+    if (studentIds.length === 0) {
+      callback([]);
+      return () => undefined;
+    }
+
+    return onSnapshot(
+      query(classStudentsCollection(classId), where(documentId(), 'in', studentIds.slice(0, 10))),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeStudent, 'student')),
+      (error) => onError?.(new ServiceError('Failed to listen to linked students.', error))
+    );
+  },
+
   subscribeToTeachers(classId: string, onUpdate: (teachers: Teacher[]) => void, onError?: (error: Error) => void) {
     return onSnapshot(
       query(classTeachersCollection(classId), orderBy('joinedAt', 'desc')),
@@ -1130,7 +1156,7 @@ export const firebaseService = {
     role: User['role'];
     batchId?: string;
     batchName?: string;
-    linkedStudentId?: string;
+    linkedStudentIds?: string[];
   }) {
     return withErrorHandling('Failed to approve user with assignment.', async () => {
       const userRef = doc(usersCollection, input.userId);
@@ -1152,8 +1178,9 @@ export const firebaseService = {
         classIds: [input.classId],
         classId: input.classId,
         activeClassId: input.classId,
-        batchId: input.batchId ?? null,
-        linkedStudentId: input.linkedStudentId ?? null,
+        batchId: input.role === 'student' ? input.batchId ?? null : null,
+        linkedStudentIds: input.role === 'parent' ? (input.linkedStudentIds ?? []) : [],
+        linkedStudentId: input.role === 'parent' ? input.linkedStudentIds?.[0] ?? null : null,
         updatedAt: serverTimestamp(),
       });
 
@@ -1166,6 +1193,7 @@ export const firebaseService = {
             phone: '',
             batch: batchName,
             batchId: input.batchId ?? null,
+            parentIds: [],
             parentEmail: '',
             parentPhone: '',
             rollNumber: `AUTO-${input.userId.slice(0, 6).toUpperCase()}`,
@@ -1196,6 +1224,17 @@ export const firebaseService = {
             updatedAt: serverTimestamp(),
           }),
           { merge: true }
+        );
+      }
+
+      if (input.role === 'parent' && (input.linkedStudentIds?.length ?? 0) > 0) {
+        await Promise.all(
+          input.linkedStudentIds!.map((studentId) =>
+            updateDoc(doc(classStudentsCollection(input.classId), studentId), {
+              parentIds: arrayUnion(input.userId),
+              updatedAt: serverTimestamp(),
+            })
+          )
         );
       }
     });
@@ -1240,6 +1279,19 @@ export const firebaseService = {
     return onSnapshot(
       query(classTeachersCollection(classId), where('email', '==', email)),
       (snapshot) => callback(snapshot.docs[0] ? normalizeDoc<Teacher>(snapshot.docs[0], normalizeTeacher, 'teacher') : null),
+      (error) => onError?.(new ServiceError('Failed to listen to teacher profile.', error))
+    );
+  },
+
+  subscribeToTeacherById(
+    classId: string,
+    teacherId: string,
+    callback: (teacher: Teacher | null) => void,
+    onError?: (error: Error) => void
+  ) {
+    return onSnapshot(
+      doc(classTeachersCollection(classId), teacherId),
+      (snapshot) => callback(normalizeOptionalSnapshot<Teacher>(snapshot, normalizeTeacher, 'teacher')),
       (error) => onError?.(new ServiceError('Failed to listen to teacher profile.', error))
     );
   },

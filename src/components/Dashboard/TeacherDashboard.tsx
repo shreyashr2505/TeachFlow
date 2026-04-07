@@ -12,13 +12,13 @@ const TeacherDashboard: React.FC = () => {
   const teacherSubjects = teacher?.subjects ?? [];
 
   useEffect(() => {
-    if (!currentClass?.id || !user?.email) return;
+    if (!currentClass?.id || !user?.id) return;
     const unsubs = [
-      firebaseService.subscribeToTeacherByEmail(currentClass.id, user.email, setTeacher),
+      firebaseService.subscribeToTeacherById(currentClass.id, user.id, setTeacher),
       firebaseService.subscribeToStudents(currentClass.id, setStudents),
     ];
     return () => unsubs.forEach((unsubscribe) => unsubscribe());
-  }, [currentClass?.id, user?.email]);
+  }, [currentClass?.id, user?.id]);
 
   const myStudents = useMemo(
     () => students.filter((student) => teacherBatches.includes(student.batch)),

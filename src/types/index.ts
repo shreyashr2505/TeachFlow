@@ -11,6 +11,7 @@ export interface User {
   branchIds?: string[];
   subscriptionPlan?: 'free' | 'standard' | 'pro';
   linkedStudentId?: string;
+  linkedStudentIds?: string[];
   batchId?: string;
 }
 
@@ -146,6 +147,7 @@ export interface Student {
   phone?: string;
   batch: string;
   batchId?: string;
+  parentIds?: string[];
   parentEmail?: string;
   parentId?: string;
   parentPhone?: string;

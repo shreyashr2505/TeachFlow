@@ -37,10 +37,11 @@ const ReportCardManagement: React.FC = () => {
 
   const targetStudent = useMemo(() => {
     if (user?.role === 'student') {
-      return students.find((item) => item.email === user.email || item.id === user.linkedStudentId) ?? null;
+      return students.find((item) => item.id === user.id) ?? null;
     }
     if (user?.role === 'parent') {
-      return students.find((item) => item.parentEmail === user.email || item.id === user.linkedStudentId) ?? null;
+      const linkedIds = user.linkedStudentIds ?? (user.linkedStudentId ? [user.linkedStudentId] : []);
+      return students.find((item) => linkedIds.includes(item.id)) ?? null;
     }
     return students.find((item) => item.id === selectedStudentId) ?? null;
   }, [selectedStudentId, students, user]);

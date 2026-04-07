@@ -13,7 +13,8 @@ interface ParentDashboardProps {
 const ParentDashboard: React.FC<ParentDashboardProps> = ({ initialTab = 'overview' }) => {
   const { user, currentClass } = useAuth();
   const [activeTab, setActiveTab] = useState(initialTab);
-  const [child, setChild] = useState<Student | null>(null);
+  const [children, setChildren] = useState<Student[]>([]);
+  const [selectedChildId, setSelectedChildId] = useState('');
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [marks, setMarks] = useState<Marks[]>([]);
@@ -23,22 +24,31 @@ const ParentDashboard: React.FC<ParentDashboardProps> = ({ initialTab = 'overvie
 
   useEffect(() => {
     if (!currentClass?.id) return;
-    if (user?.linkedStudentId) {
-      return firebaseService.subscribeToStudentById(currentClass.id, user.linkedStudentId, setChild);
+    const linkedIds = user?.linkedStudentIds ?? (user?.linkedStudentId ? [user.linkedStudentId] : []);
+    return firebaseService.subscribeToStudentsByIds(currentClass.id, linkedIds, setChildren);
+  }, [currentClass?.id, user?.linkedStudentId, user?.linkedStudentIds]);
+
+  useEffect(() => {
+    if (!selectedChildId && children[0]) {
+      setSelectedChildId(children[0].id);
     }
-    if (user?.email) {
-      return firebaseService.subscribeToStudentByParentEmail(currentClass.id, user.email, setChild);
+    if (children.length > 0 && !children.some((child) => child.id === selectedChildId)) {
+      setSelectedChildId(children[0].id);
     }
-  }, [currentClass?.id, user?.email, user?.linkedStudentId]);
+  }, [children, selectedChildId]);
 
   useEffect(() => {
     if (!currentClass?.id || activeTab !== 'overview') {
       setTeachers([]);
       return;
     }
-
     return firebaseService.subscribeToTeachers(currentClass.id, setTeachers);
   }, [activeTab, currentClass?.id]);
+
+  const child = useMemo(
+    () => children.find((item) => item.id === selectedChildId) ?? children[0] ?? null,
+    [children, selectedChildId]
+  );
 
   useEffect(() => {
     if (!currentClass?.id || !child?.id) {
@@ -57,30 +67,22 @@ const ParentDashboard: React.FC<ParentDashboardProps> = ({ initialTab = 'overvie
   }, [child?.id, currentClass?.id]);
 
   const childTeachers = useMemo(
-    () => teachers.filter((teacher) => (child ? (teacher.batches ?? []).includes(child.batch) : false)),
-    [child, teachers]
+    () => teachers.filter((teacher) => (child?.batchId ? (teacher.batchIds ?? []).includes(child.batchId) : (teacher.batches ?? []).includes(child?.batch ?? ''))),
+    [child?.batch, child?.batchId, teachers]
   );
   const childAttendance = useMemo(
-    () =>
-      attendance
-        .filter((item) => item.studentId === child?.id)
-        .sort((a, b) => new Date(b.date ?? b.markedAt).getTime() - new Date(a.date ?? a.markedAt).getTime()),
+    () => attendance.filter((item) => item.studentId === child?.id).sort((a, b) => new Date(b.date ?? b.markedAt).getTime() - new Date(a.date ?? a.markedAt).getTime()),
     [attendance, child?.id]
   );
   const childMarks = useMemo(
-    () =>
-      marks
-        .filter((item) => item.studentId === child?.id)
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    () => marks.filter((item) => item.studentId === child?.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
     [marks, child?.id]
   );
   const childFees = useMemo(
-    () =>
-      fees
-        .filter((item) => item.studentId === child?.id)
-        .sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime()),
+    () => fees.filter((item) => item.studentId === child?.id).sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime()),
     [fees, child?.id]
   );
+
   const pendingFees = Math.max((child?.totalFees ?? 0) - (child?.paidFees ?? 0), 0);
   const attendancePercentage = useMemo(() => {
     if (childAttendance.length === 0) return 0;
@@ -96,7 +98,7 @@ const ParentDashboard: React.FC<ParentDashboardProps> = ({ initialTab = 'overvie
 
   const renderContent = () => {
     if (!child) {
-      return <EmptyState title="No linked child found" description="Ask the admin to add your email as the parent email for a student record." />;
+      return <EmptyState title="No linked child found" description="This parent account does not have any linked student IDs yet." />;
     }
 
     switch (activeTab) {
@@ -107,10 +109,7 @@ const ParentDashboard: React.FC<ParentDashboardProps> = ({ initialTab = 'overvie
           <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between gap-4">
               <h2 className="text-lg font-semibold text-gray-900">Attendance Records</h2>
-              <button
-                onClick={() => pdfService.downloadAttendanceReport(child, childAttendance, currentClass)}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-              >
+              <button onClick={() => pdfService.downloadAttendanceReport(child, childAttendance, currentClass)} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                 <Download className="h-4 w-4" />
                 <span>Download Attendance</span>
               </button>
@@ -124,9 +123,7 @@ const ParentDashboard: React.FC<ParentDashboardProps> = ({ initialTab = 'overvie
                   </div>
                   <div className="text-right">
                     <div className="text-sm text-gray-500">{new Date(item.date ?? item.markedAt).toLocaleDateString()}</div>
-                    <span className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-semibold ${item.status === 'present' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                      {item.status}
-                    </span>
+                    <span className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-semibold ${item.status === 'present' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{item.status}</span>
                   </div>
                 </div>
               ))}
@@ -140,10 +137,7 @@ const ParentDashboard: React.FC<ParentDashboardProps> = ({ initialTab = 'overvie
           <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between gap-4">
               <h2 className="text-lg font-semibold text-gray-900">Marks Records</h2>
-              <button
-                onClick={() => pdfService.downloadStudentReport(child, childMarks, currentClass)}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-              >
+              <button onClick={() => pdfService.downloadStudentReport(child, childMarks, currentClass)} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                 <Download className="h-4 w-4" />
                 <span>Download Marks</span>
               </button>
@@ -169,10 +163,7 @@ const ParentDashboard: React.FC<ParentDashboardProps> = ({ initialTab = 'overvie
           <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between gap-4">
               <h2 className="text-lg font-semibold text-gray-900">Fee Overview</h2>
-              <button
-                onClick={() => pdfService.downloadFeeSummary(child, childFees, currentClass)}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-              >
+              <button onClick={() => pdfService.downloadFeeSummary(child, childFees, currentClass)} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                 <Download className="h-4 w-4" />
                 <span>Download Fee Report</span>
               </button>
@@ -245,9 +236,20 @@ const ParentDashboard: React.FC<ParentDashboardProps> = ({ initialTab = 'overvie
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Parent Dashboard</h1>
-        <p className="mt-2 text-gray-600">{child ? `Track ${child.name}'s class progress.` : 'No linked child found yet.'}</p>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Parent Dashboard</h1>
+          <p className="mt-2 text-gray-600">{child ? `Track ${child.name}'s class progress.` : 'No linked child found yet.'}</p>
+        </div>
+        {children.length > 1 ? (
+          <select value={child?.id ?? ''} onChange={(event) => setSelectedChildId(event.target.value)} className="rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            {children.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
@@ -282,13 +284,7 @@ const ParentDashboard: React.FC<ParentDashboardProps> = ({ initialTab = 'overvie
             { id: 'marks', label: 'Marks' },
             { id: 'fees', label: 'Fees' },
           ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as typeof activeTab)}
-              className={`rounded-xl px-4 py-2 transition ${
-                activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
+            <button key={tab.id} onClick={() => setActiveTab(tab.id as typeof activeTab)} className={`rounded-xl px-4 py-2 transition ${activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
               {tab.label}
             </button>
           ))}

@@ -58,8 +58,12 @@ service cloud.firestore {
         classIds.hasAny(userDoc().data.classIds);
     }
 
-    function linkedStudentId() {
-      return hasUserDoc() ? userDoc().data.linkedStudentId : null;
+    function linkedStudentIds() {
+      return hasUserDoc() && userDoc().data.linkedStudentIds is list
+        ? userDoc().data.linkedStudentIds
+        : hasUserDoc() && userDoc().data.linkedStudentId is string
+          ? [userDoc().data.linkedStudentId]
+          : [];
     }
 
     function studentPath(classId, studentId) {
@@ -76,16 +80,16 @@ service cloud.firestore {
 
     function isStudentOwner(classId, studentId) {
       return classStudent(classId) &&
-        studentExists(classId, studentId) &&
-        studentDoc(classId, studentId).data.email == request.auth.token.email;
+        request.auth.uid == studentId;
     }
 
     function isParentOfStudent(classId, studentId) {
       return classParent(classId) &&
         studentExists(classId, studentId) &&
         (
-          linkedStudentId() == studentId ||
-          studentDoc(classId, studentId).data.parentEmail == request.auth.token.email
+          studentId in linkedStudentIds() ||
+          (studentDoc(classId, studentId).data.parentIds is list &&
+            request.auth.uid in studentDoc(classId, studentId).data.parentIds)
         );
     }
 

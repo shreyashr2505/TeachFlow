@@ -35,6 +35,13 @@ const Unauthorized: React.FC = () => (
   </div>
 );
 
+const ValidationScreen: React.FC<{ title: string; description: string }> = ({ title, description }) => (
+  <div className="p-8 text-center">
+    <h2 className="text-2xl font-semibold text-gray-900">{title}</h2>
+    <p className="mt-2 text-gray-600">{description}</p>
+  </div>
+);
+
 const PendingApprovalScreen: React.FC = () => {
   const { logout } = useAuth();
   return (
@@ -416,6 +423,14 @@ const TenantRoute: React.FC = () => {
 
   if (user.approved === false) {
     return <PendingApprovalScreen />;
+  }
+
+  if (user.role === 'student' && !user.batchId) {
+    return <ValidationScreen title="Batch Assignment Pending" description="Your student account is approved, but no batch has been assigned yet." />;
+  }
+
+  if (user.role === 'parent' && ((user.linkedStudentIds?.length ?? 0) === 0) && !user.linkedStudentId) {
+    return <ValidationScreen title="Student Link Pending" description="Your parent account is approved, but no student has been linked yet." />;
   }
 
   if (!classSlug) {

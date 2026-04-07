@@ -22,16 +22,9 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ initialTab = 'overv
   useEffect(() => setActiveTab(initialTab), [initialTab]);
 
   useEffect(() => {
-    if (!currentClass?.id) return;
-
-    if (user?.linkedStudentId) {
-      return firebaseService.subscribeToStudentById(currentClass.id, user.linkedStudentId, setStudent);
-    }
-
-    if (user?.email) {
-      return firebaseService.subscribeToStudentByEmail(currentClass.id, user.email, setStudent);
-    }
-  }, [currentClass?.id, user?.email, user?.linkedStudentId]);
+    if (!currentClass?.id || !user?.id) return;
+    return firebaseService.subscribeToStudentById(currentClass.id, user.id, setStudent);
+  }, [currentClass?.id, user?.id]);
 
   useEffect(() => {
     if (!currentClass?.id || (!student?.batchId && !student?.batch)) {
@@ -269,7 +262,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ initialTab = 'overv
                 <div><span className="font-medium text-gray-900">Name:</span> {student?.name}</div>
                 <div><span className="font-medium text-gray-900">Batch:</span> {student?.batch}</div>
                 <div><span className="font-medium text-gray-900">Roll Number:</span> {student?.rollNumber}</div>
-                <div><span className="font-medium text-gray-900">Parent Email:</span> {student?.parentEmail}</div>
+                <div><span className="font-medium text-gray-900">Parents Linked:</span> {student?.parentIds?.length ?? 0}</div>
               </div>
             </div>
             <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">

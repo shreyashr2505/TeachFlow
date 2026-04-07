@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "migrate:identity:dry": "node --env-file=.env scripts/migrate-identity-structure.mjs",
+    "migrate:identity": "node --env-file=.env scripts/migrate-identity-structure.mjs --commit"
   },
   "dependencies": {
     "firebase": "^10.7.1",

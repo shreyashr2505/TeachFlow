@@ -16,7 +16,7 @@ const UserApprovals: React.FC = () => {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [role, setRole] = useState<User['role']>('student');
   const [selectedBatchId, setSelectedBatchId] = useState('');
-  const [selectedStudentId, setSelectedStudentId] = useState('');
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!currentClass?.id) return;
@@ -50,7 +50,7 @@ const UserApprovals: React.FC = () => {
     setSelectedUser(user);
     setRole(user.role);
     setSelectedBatchId(batches[0]?.id ?? '');
-    setSelectedStudentId(user.linkedStudentId ?? '');
+    setSelectedStudentIds(user.linkedStudentIds ?? (user.linkedStudentId ? [user.linkedStudentId] : []));
     setError('');
     setSuccess('');
   };
@@ -59,7 +59,7 @@ const UserApprovals: React.FC = () => {
     setSelectedUser(null);
     setRole('student');
     setSelectedBatchId('');
-    setSelectedStudentId('');
+    setSelectedStudentIds([]);
   };
 
   const handleApprove = async () => {
@@ -68,8 +68,8 @@ const UserApprovals: React.FC = () => {
       setError('Select a batch before approving this user.');
       return;
     }
-    if (role === 'parent' && !selectedStudentId) {
-      setError('Select the linked student for this parent.');
+    if (role === 'parent' && selectedStudentIds.length === 0) {
+      setError('Select at least one linked student for this parent.');
       return;
     }
 
@@ -80,7 +80,7 @@ const UserApprovals: React.FC = () => {
         role,
         batchId: role === 'student' || role === 'teacher' ? selectedBatch?.id : undefined,
         batchName: role === 'student' || role === 'teacher' ? selectedBatch?.name : undefined,
-        linkedStudentId: role === 'parent' ? selectedStudentId : undefined,
+        linkedStudentIds: role === 'parent' ? selectedStudentIds : undefined,
       });
       setPendingUsers((prev) => prev.filter((user) => user.id !== selectedUser.id));
       setSuccess(`${selectedUser.name} approved successfully.`);
@@ -226,17 +226,26 @@ const UserApprovals: React.FC = () => {
 
               {role === 'parent' ? (
                 <div className="md:col-span-2">
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Linked Student</label>
-                  <div className="relative">
-                    <Link2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                    <select value={selectedStudentId} onChange={(event) => setSelectedStudentId(event.target.value)} className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="">Select student</option>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">Linked Students</label>
+                  <div className="rounded-xl border border-gray-200 p-3">
+                    <div className="mb-3 flex items-center gap-2 text-sm text-gray-500">
+                      <Link2 className="h-4 w-4 text-gray-400" />
+                      <span>Select one or more students for this parent account.</span>
+                    </div>
+                    <div className="space-y-2">
                       {students.map((student) => (
-                        <option key={student.id} value={student.id}>
-                          {student.name} ({student.batch})
-                        </option>
+                        <label key={student.id} className="flex items-center gap-3 rounded-lg border border-gray-100 px-3 py-2 hover:bg-gray-50">
+                          <input
+                            type="checkbox"
+                            checked={selectedStudentIds.includes(student.id)}
+                            onChange={() => toggleStudentLink(student.id)}
+                          />
+                          <span className="text-sm text-gray-700">
+                            {student.name} ({student.batch})
+                          </span>
+                        </label>
                       ))}
-                    </select>
+                    </div>
                   </div>
                 </div>
               ) : null}
@@ -258,3 +267,8 @@ const UserApprovals: React.FC = () => {
 };
 
 export default UserApprovals;
+  const toggleStudentLink = (studentId: string) => {
+    setSelectedStudentIds((prev) =>
+      prev.includes(studentId) ? prev.filter((id) => id !== studentId) : [...prev, studentId]
+    );
+  };
