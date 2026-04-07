@@ -2,6 +2,7 @@ import React from 'react';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
+  resetKey?: string;
 }
 
 interface ErrorBoundaryState {
@@ -19,6 +20,12 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('TeachFlow UI crashed.', error, info);
+  }
+
+  componentDidUpdate(prevProps: ErrorBoundaryProps) {
+    if (this.state.hasError && this.props.resetKey !== prevProps.resetKey) {
+      this.setState({ hasError: false });
+    }
   }
 
   private handleReload = () => {

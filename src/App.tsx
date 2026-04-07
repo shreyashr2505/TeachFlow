@@ -479,8 +479,10 @@ const PlatformRoute: React.FC = () => {
 };
 
 function App() {
+  const location = useLocation();
+
   return (
-    <ErrorBoundary>
+    <ErrorBoundary resetKey={location.pathname}>
       <ThemeProvider>
         <AuthProvider>
           <Routes>

@@ -49,7 +49,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) => {
 
   const stats = [
     { title: 'Students', value: students.length, icon: GraduationCap, color: 'from-blue-500 to-blue-600', trend: `${Object.keys(batchCounts).length} batches` },
-    { title: 'Teachers', value: teachers.length, icon: Users, color: 'from-purple-500 to-purple-600', trend: `${teachers.reduce((sum, teacher) => sum + teacher.subjects.length, 0)} subjects` },
+    { title: 'Teachers', value: teachers.length, icon: Users, color: 'from-purple-500 to-purple-600', trend: `${teachers.reduce((sum, teacher) => sum + (teacher.subjects?.length ?? 0), 0)} subjects` },
     { title: 'Pending Fees', value: pendingFees.toLocaleString('en-IN'), icon: AlertCircle, color: 'from-orange-500 to-orange-600', trend: 'From student billing' },
     { title: 'Collected Fees', value: collectedFees.toLocaleString('en-IN'), icon: DollarSign, color: 'from-teal-500 to-teal-600', trend: 'Realtime from records' },
     { title: 'Batches', value: Object.keys(batchCounts).length, icon: BookOpen, color: 'from-green-500 to-green-600', trend: 'Active class groups' },

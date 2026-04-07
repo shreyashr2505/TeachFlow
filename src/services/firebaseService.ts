@@ -36,6 +36,8 @@ import {
 } from '../types';
 
 type FirestoreDate = Timestamp | string | null | undefined;
+type FirestoreSnapshotLike = { id: string; data: () => Record<string, unknown> };
+type FirestoreSingleSnapshotLike = FirestoreSnapshotLike & { exists?: () => boolean };
 
 class ServiceError extends Error {
   constructor(message: string, public cause?: unknown) {
@@ -47,11 +49,62 @@ class ServiceError extends Error {
 const toIsoString = (value: FirestoreDate) =>
   value instanceof Timestamp ? value.toDate().toISOString() : value ?? new Date().toISOString();
 
-const mapDoc = <T>(snapshot: { id: string; data: () => Record<string, unknown> }) =>
+const mapDoc = <T>(snapshot: FirestoreSnapshotLike) =>
   ({
     id: snapshot.id,
     ...snapshot.data(),
   }) as T;
+
+const asString = (value: unknown, fallback = ''): string => (typeof value === 'string' ? value : fallback);
+const asNumber = (value: unknown, fallback = 0): number =>
+  typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))
+      ? Number(value)
+      : fallback;
+const asBoolean = (value: unknown, fallback = false): boolean => (typeof value === 'boolean' ? value : fallback);
+const asStringArray = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : [];
+const asRecord = (value: unknown): Record<string, unknown> =>
+  Object.prototype.toString.call(value) === '[object Object]' ? (value as Record<string, unknown>) : {};
+const asNullableString = (value: unknown): string | undefined => {
+  const normalized = asString(value).trim();
+  return normalized.length > 0 ? normalized : undefined;
+};
+
+const normalizeDoc = <T>(
+  snapshot: FirestoreSnapshotLike,
+  normalizer: (value: T) => T,
+  label: string
+): T | null => {
+  try {
+    return normalizer(mapDoc<T>(snapshot));
+  } catch (error) {
+    console.warn(`Skipped malformed ${label} document ${snapshot.id}.`, error, snapshot.data());
+    return null;
+  }
+};
+
+const normalizeSnapshotDocs = <T>(
+  snapshots: FirestoreSnapshotLike[],
+  normalizer: (value: T) => T,
+  label: string
+): T[] =>
+  snapshots
+    .map((snapshot) => normalizeDoc<T>(snapshot, normalizer, label))
+    .filter((item): item is T => item !== null);
+
+const normalizeOptionalSnapshot = <T>(
+  snapshot: FirestoreSingleSnapshotLike,
+  normalizer: (value: T) => T,
+  label: string
+): T | null => {
+  if (typeof snapshot.exists === 'function' && !snapshot.exists()) {
+    return null;
+  }
+
+  return normalizeDoc<T>(snapshot, normalizer, label);
+};
 
 const withErrorHandling = async <T>(message: string, action: () => Promise<T>) => {
   try {
@@ -88,78 +141,260 @@ const classLimitsByPlan: Record<CoachingClass['plan'], { students: number; teach
 
 const normalizeUser = (user: User): User => ({
   ...user,
+  id: asString(user.id),
+  email: asString(user.email),
+  name: asString(user.name, 'TeachFlow User'),
   role:
     user.role === ('super admin' as User['role']) ||
     user.role === ('super-admin' as User['role']) ||
     user.role === ('superadmin' as User['role'])
       ? 'super_admin'
-      : user.role,
+      : (['super_admin', 'admin', 'teacher', 'student', 'parent'].includes(asString(user.role)) ? user.role : 'student'),
+  approved: asBoolean(user.approved, false),
   createdAt: toIsoString(user.createdAt),
-  classIds: user.classIds ?? (user.classId ? [user.classId] : []),
-  activeClassId: user.activeClassId ?? user.classId,
+  classId: asNullableString(user.classId),
+  classIds: asStringArray(user.classIds).length > 0 ? asStringArray(user.classIds) : asNullableString(user.classId) ? [asString(user.classId)] : [],
+  activeClassId: asNullableString(user.activeClassId) ?? asNullableString(user.classId),
+  branchIds: asStringArray(user.branchIds),
+  subscriptionPlan: ['free', 'standard', 'pro'].includes(asString(user.subscriptionPlan)) ? user.subscriptionPlan : undefined,
+  linkedStudentId: asNullableString(user.linkedStudentId),
 });
 
 const normalizeClass = (coachingClass: CoachingClass): CoachingClass => ({
   ...coachingClass,
+  id: asString(coachingClass.id),
+  name: asString(coachingClass.name, 'Untitled Class'),
+  description: asNullableString(coachingClass.description),
+  logo: asNullableString(coachingClass.logo),
+  subdomain: asString(coachingClass.subdomain),
+  adminId: asString(coachingClass.adminId),
   createdAt: toIsoString(coachingClass.createdAt),
-  plan: coachingClass.plan ?? 'free',
-  isActive: coachingClass.isActive ?? true,
-  studentCount: coachingClass.studentCount ?? 0,
-  teacherCount: coachingClass.teacherCount ?? 0,
-  limits:
-    coachingClass.limits ?? classLimitsByPlan[coachingClass.plan ?? 'free'],
+  plan: ['free', 'standard', 'pro'].includes(asString(coachingClass.plan)) ? coachingClass.plan : 'free',
+  isActive: asBoolean(coachingClass.isActive, true),
+  studentCount: asNumber(coachingClass.studentCount, 0),
+  teacherCount: asNumber(coachingClass.teacherCount, 0),
+  limits: {
+    students: asNumber(coachingClass.limits?.students, classLimitsByPlan[(['free', 'standard', 'pro'].includes(asString(coachingClass.plan)) ? coachingClass.plan : 'free')].students),
+    teachers: asNumber(coachingClass.limits?.teachers, classLimitsByPlan[(['free', 'standard', 'pro'].includes(asString(coachingClass.plan)) ? coachingClass.plan : 'free')].teachers),
+  },
+  settings: {
+    allowSelfRegistration: asBoolean(coachingClass.settings?.allowSelfRegistration, true),
+    requireApproval: asBoolean(coachingClass.settings?.requireApproval, false),
+  },
 });
 
 const normalizeStudent = (student: Student): Student => ({
   ...student,
+  id: asString(student.id),
+  name: asString(student.name, 'Unnamed Student'),
+  email: asString(student.email),
+  phone: asNullableString(student.phone),
+  batch: asString(student.batch, 'Batch A'),
+  parentEmail: asNullableString(student.parentEmail),
+  parentId: asNullableString(student.parentId),
+  parentPhone: asNullableString(student.parentPhone),
+  classId: asString(student.classId),
+  rollNumber: asString(student.rollNumber, 'N/A'),
   joinedAt: toIsoString(student.joinedAt),
+  feeStatus: ['paid', 'partial', 'due'].includes(asString(student.feeStatus)) ? student.feeStatus : 'due',
+  totalFees: asNumber(student.totalFees, 0),
+  paidFees: asNumber(student.paidFees, 0),
 });
 
 const normalizeTeacher = (teacher: Teacher): Teacher => ({
   ...teacher,
+  id: asString(teacher.id),
+  name: asString(teacher.name, 'Unnamed Teacher'),
+  email: asString(teacher.email),
+  phone: asNullableString(teacher.phone),
+  classId: asString(teacher.classId),
   joinedAt: toIsoString(teacher.joinedAt),
+  subjects: asStringArray(teacher.subjects),
+  batches: asStringArray(teacher.batches),
+  salary: teacher.salary == null ? undefined : asNumber(teacher.salary, 0),
 });
 
-const normalizeLecture = (lecture: Lecture): Lecture => lecture;
+const normalizeLecture = (lecture: Lecture): Lecture => ({
+  ...lecture,
+  id: asString(lecture.id),
+  title: asString(lecture.title, 'Untitled Lecture'),
+  subject: asString(lecture.subject, 'General'),
+  batch: asString(lecture.batch, 'Batch A'),
+  teacherId: asString(lecture.teacherId),
+  teacherName: asString(lecture.teacherName, 'Teacher'),
+  date: asString(lecture.date),
+  time: asString(lecture.time),
+  duration: asNumber(lecture.duration, 60),
+  classId: asString(lecture.classId),
+  status: ['scheduled', 'completed', 'cancelled'].includes(asString(lecture.status)) ? lecture.status : 'scheduled',
+  description: asNullableString(lecture.description),
+});
 const normalizeAttendance = (attendance: Attendance): Attendance => ({
   ...attendance,
+  id: asString(attendance.id),
+  lectureId: asString(attendance.lectureId),
+  studentId: asString(attendance.studentId),
+  studentName: asString(attendance.studentName, 'Student'),
+  classId: asNullableString(attendance.classId),
+  lectureTitle: asNullableString(attendance.lectureTitle),
+  batch: asNullableString(attendance.batch),
+  date: asNullableString(attendance.date),
+  status: ['present', 'absent'].includes(asString(attendance.status)) ? attendance.status : 'absent',
   markedAt: toIsoString(attendance.markedAt),
+  markedBy: asString(attendance.markedBy),
 });
-const normalizeMarks = (marks: Marks): Marks => marks;
-const normalizeFee = (fee: Fee): Fee => fee;
+const normalizeMarks = (marks: Marks): Marks => ({
+  ...marks,
+  id: asString(marks.id),
+  studentId: asString(marks.studentId),
+  studentName: asString(marks.studentName, 'Student'),
+  subject: asString(marks.subject, 'General'),
+  examType: asString(marks.examType, 'Exam'),
+  examName: asString(marks.examName, 'Assessment'),
+  totalMarks: asNumber(marks.totalMarks, 0),
+  obtainedMarks: asNumber(marks.obtainedMarks, 0),
+  date: asString(marks.date),
+  classId: asString(marks.classId),
+  teacherId: asString(marks.teacherId),
+  batch: asString(marks.batch, 'Batch A'),
+});
+const normalizeFeePayment = (payment: Record<string, unknown>) => ({
+  id: asString(payment.id),
+  amount: asNumber(payment.amount, 0),
+  paidDate: asString(payment.paidDate),
+  method: ['cash', 'upi', 'card', 'bank_transfer', 'cheque'].includes(asString(payment.method))
+    ? (payment.method as Fee['paymentHistory'][number]['method'])
+    : 'cash',
+  receiptNumber: asString(payment.receiptNumber),
+  notes: asNullableString(payment.notes),
+});
+const normalizeFeeInstallment = (installment: Record<string, unknown>) => ({
+  id: asString(installment.id),
+  amount: asNumber(installment.amount, 0),
+  dueDate: asString(installment.dueDate),
+  status: ['paid', 'due'].includes(asString(installment.status)) ? (installment.status as 'paid' | 'due') : 'due',
+  paidDate: asNullableString(installment.paidDate),
+});
+const normalizeFee = (fee: Fee): Fee => ({
+  ...fee,
+  id: asString(fee.id),
+  studentId: asString(fee.studentId),
+  studentName: asString(fee.studentName, 'Student'),
+  amount: asNumber(fee.amount, 0),
+  dueDate: asString(fee.dueDate),
+  status: ['paid', 'partial', 'due'].includes(asString(fee.status)) ? fee.status : 'due',
+  paidAmount: asNumber(fee.paidAmount, 0),
+  paidDate: asNullableString(fee.paidDate),
+  classId: asString(fee.classId),
+  description: asString(fee.description, 'Fee'),
+  installments: Array.isArray(fee.installments) ? fee.installments.map((item) => normalizeFeeInstallment(asRecord(item))) : [],
+  paymentHistory: Array.isArray(fee.paymentHistory) ? fee.paymentHistory.map((item) => normalizeFeePayment(asRecord(item))) : [],
+  receiptCount: fee.receiptCount == null ? undefined : asNumber(fee.receiptCount, 0),
+});
 const normalizeInvite = (invite: Invite): Invite => ({
   ...invite,
+  id: asString(invite.id),
+  email: asString(invite.email),
+  role: ['super_admin', 'admin', 'teacher', 'student', 'parent'].includes(asString(invite.role)) ? invite.role : 'student',
+  classId: asString(invite.classId),
+  invitedBy: asString(invite.invitedBy),
+  studentId: asNullableString(invite.studentId),
+  status: ['pending', 'accepted'].includes(asString(invite.status)) ? invite.status : 'pending',
   createdAt: toIsoString(invite.createdAt),
   acceptedAt: invite.acceptedAt ? toIsoString(invite.acceptedAt) : undefined,
   expiresAt: invite.expiresAt ? toIsoString(invite.expiresAt) : undefined,
 });
 const normalizeAuditLog = (log: AuditLog): AuditLog => ({
   ...log,
+  id: asString(log.id),
+  actorId: asString(log.actorId),
+  actorName: asString(log.actorName, 'Unknown User'),
+  action: asString(log.action),
+  entityType: ['student', 'teacher', 'lecture', 'attendance', 'marks', 'fee', 'class', 'invite', 'system'].includes(asString(log.entityType))
+    ? log.entityType
+    : 'system',
+  entityId: asString(log.entityId),
+  classId: asString(log.classId),
   createdAt: toIsoString(log.createdAt),
+  metadata: asRecord(log.metadata),
 });
 const normalizeNotification = (notification: NotificationJob): NotificationJob => ({
   ...notification,
+  id: asString(notification.id),
+  channel: ['email', 'whatsapp'].includes(asString(notification.channel)) ? notification.channel : 'email',
+  recipient: asString(notification.recipient),
+  template: asString(notification.template),
+  classId: asString(notification.classId),
+  status: ['queued', 'sent', 'failed'].includes(asString(notification.status)) ? notification.status : 'queued',
+  payload: asRecord(notification.payload) as Record<string, string | number>,
   createdAt: toIsoString(notification.createdAt),
 });
 const normalizeMessage = (message: Message): Message => ({
   ...message,
+  id: asString(message.id),
+  classId: asString(message.classId),
+  fromUserId: asString(message.fromUserId),
+  fromUserName: asString(message.fromUserName, 'Unknown User'),
+  fromRole: ['super_admin', 'admin', 'teacher', 'student', 'parent'].includes(asString(message.fromRole)) ? message.fromRole : 'student',
+  toUserId: asNullableString(message.toUserId),
+  toRole: ['super_admin', 'admin', 'teacher', 'student', 'parent'].includes(asString(message.toRole)) ? message.toRole : undefined,
+  subject: asNullableString(message.subject),
+  message: asString(message.message),
+  status: ['sent', 'read'].includes(asString(message.status)) ? message.status : 'sent',
   createdAt: toIsoString(message.createdAt),
   readAt: message.readAt ? toIsoString(message.readAt) : undefined,
 });
+const normalizeReportCardMark = (mark: Record<string, unknown>) => ({
+  subject: asString(mark.subject, 'General'),
+  examType: asString(mark.examType, 'Exam'),
+  examName: asString(mark.examName, 'Assessment'),
+  totalMarks: asNumber(mark.totalMarks, 0),
+  obtainedMarks: asNumber(mark.obtainedMarks, 0),
+  percentage: asNumber(mark.percentage, 0),
+});
 const normalizeReportCard = (report: ReportCard): ReportCard => ({
   ...report,
+  id: asString(report.id),
+  studentId: asString(report.studentId),
+  classId: asString(report.classId),
+  attendance: {
+    total: asNumber(report.attendance?.total, 0),
+    present: asNumber(report.attendance?.present, 0),
+    absent: asNumber(report.attendance?.absent, 0),
+    percentage: asNumber(report.attendance?.percentage, 0),
+  },
+  marks: Array.isArray(report.marks) ? report.marks.map((item) => normalizeReportCardMark(asRecord(item))) : [],
+  aiSummary: asNullableString(report.aiSummary),
+  generatedBy: asString(report.generatedBy),
   generatedAt: toIsoString(report.generatedAt),
   updatedAt: report.updatedAt ? toIsoString(report.updatedAt) : undefined,
-  aiStatus: report.aiStatus ?? 'not_requested',
+  aiStatus: ['not_requested', 'pending', 'ready', 'failed'].includes(asString(report.aiStatus)) ? report.aiStatus : 'not_requested',
 });
 const normalizeAnalyticsSnapshot = (snapshot: AnalyticsSnapshot): AnalyticsSnapshot => ({
   ...snapshot,
+  id: asString(snapshot.id),
+  classId: asString(snapshot.classId),
+  periodLabel: asString(snapshot.periodLabel, 'Current Period'),
+  attendancePercentage: asNumber(snapshot.attendancePercentage, 0),
+  passPercentage: asNumber(snapshot.passPercentage, 0),
+  topStudents: asStringArray(snapshot.topStudents),
+  weakStudents: asStringArray(snapshot.weakStudents),
+  aiSummary: asNullableString(snapshot.aiSummary),
   createdAt: toIsoString(snapshot.createdAt),
   updatedAt: snapshot.updatedAt ? toIsoString(snapshot.updatedAt) : undefined,
-  aiStatus: snapshot.aiStatus ?? 'not_requested',
+  aiStatus: ['not_requested', 'pending', 'ready', 'failed'].includes(asString(snapshot.aiStatus)) ? snapshot.aiStatus : 'not_requested',
 });
 const normalizeAIUsageLog = (entry: AIUsageLog): AIUsageLog => ({
   ...entry,
+  id: asString(entry.id),
+  classId: asString(entry.classId),
+  feature: ['class_analytics', 'student_analysis', 'improvement_plan', 'admin_chat', 'report_card'].includes(asString(entry.feature))
+    ? entry.feature
+    : 'admin_chat',
+  promptTokens: asNumber(entry.promptTokens, 0),
+  completionTokens: asNumber(entry.completionTokens, 0),
+  totalTokens: asNumber(entry.totalTokens, 0),
+  monthKey: asString(entry.monthKey),
   createdAt: toIsoString(entry.createdAt),
 });
 
@@ -183,6 +418,29 @@ const sanitizeFirestoreData = <T>(value: T): T => {
 
   return value;
 };
+
+const prepareUserForWrite = (user: Omit<User, 'createdAt'> & { createdAt?: string }) => ({
+  ...sanitizeFirestoreData(user),
+  classIds: asStringArray(user.classIds ?? (user.classId ? [user.classId] : [])),
+  branchIds: asStringArray(user.branchIds),
+});
+
+const prepareTeacherForWrite = (teacher: Omit<Teacher, 'id' | 'classId' | 'joinedAt'> | Partial<Teacher>) => ({
+  ...sanitizeFirestoreData(teacher),
+  subjects: asStringArray(teacher.subjects),
+  batches: asStringArray(teacher.batches),
+});
+
+const prepareFeeForWrite = (fee: Omit<Fee, 'id' | 'classId'> | Partial<Fee>) => ({
+  ...sanitizeFirestoreData(fee),
+  installments: Array.isArray(fee.installments) ? fee.installments.map((item) => sanitizeFirestoreData(item)) : [],
+  paymentHistory: Array.isArray(fee.paymentHistory) ? fee.paymentHistory.map((item) => sanitizeFirestoreData(item)) : [],
+});
+
+const prepareReportForWrite = (report: Omit<ReportCard, 'id' | 'generatedAt' | 'updatedAt'> | Partial<ReportCard>) => ({
+  ...sanitizeFirestoreData(report),
+  marks: Array.isArray(report.marks) ? report.marks.map((item) => sanitizeFirestoreData(item)) : [],
+});
 
 const makeExpiry = () => {
   const expires = new Date();
@@ -219,15 +477,16 @@ export const firebaseService = {
     return withErrorHandling('Failed to save user profile.', async () => {
       const userRef = doc(usersCollection, user.id);
       const existing = await getDoc(userRef);
-      const normalizedClassIds = user.classIds ?? (user.classId ? [user.classId] : []);
+      const preparedUser = prepareUserForWrite(user);
+      const normalizedClassIds = preparedUser.classIds;
 
       await setDoc(
         userRef,
         sanitizeFirestoreData({
-          ...user,
-          classId: user.classId ?? null,
+          ...preparedUser,
+          classId: preparedUser.classId ?? null,
           classIds: normalizedClassIds,
-          activeClassId: user.activeClassId ?? user.classId ?? null,
+          activeClassId: preparedUser.activeClassId ?? preparedUser.classId ?? null,
           createdAt: existing.exists() ? existing.data().createdAt ?? serverTimestamp() : serverTimestamp(),
           updatedAt: serverTimestamp(),
         }),
@@ -253,7 +512,7 @@ export const firebaseService = {
     return withErrorHandling('Failed to load user profile.', async () => {
       const snapshot = await getDoc(doc(usersCollection, userId));
       if (!snapshot.exists()) return null;
-      return normalizeUser(mapDoc<User>(snapshot));
+      return normalizeOptionalSnapshot<User>(snapshot, normalizeUser, 'user');
     });
   },
 
@@ -261,16 +520,18 @@ export const firebaseService = {
     return withErrorHandling('Failed to load classes.', async () => {
       if (classIds.length === 0) return [];
       const snapshots = await Promise.all(classIds.map((classId) => getDoc(doc(classesCollection, classId))));
-      return snapshots
-        .filter((snapshot) => snapshot.exists())
-        .map((snapshot) => normalizeClass(mapDoc<CoachingClass>(snapshot)));
+      return normalizeSnapshotDocs(
+        snapshots.filter((snapshot) => snapshot.exists()),
+        normalizeClass,
+        'class'
+      );
     });
   },
 
   async getClassesByAdmin(adminId: string) {
     return withErrorHandling('Failed to load admin classes.', async () => {
       const snapshot = await getDocs(query(classesCollection, where('adminId', '==', adminId)));
-      return snapshot.docs.map((item) => normalizeClass(mapDoc<CoachingClass>(item)));
+      return normalizeSnapshotDocs(snapshot.docs, normalizeClass, 'class');
     });
   },
 
@@ -278,7 +539,7 @@ export const firebaseService = {
     return withErrorHandling('Failed to load class by slug.', async () => {
       const snapshot = await getDocs(query(classesCollection, where('subdomain', '==', subdomain)));
       const classDoc = snapshot.docs[0];
-      return classDoc ? normalizeClass(mapDoc<CoachingClass>(classDoc)) : null;
+      return classDoc ? normalizeDoc<CoachingClass>(classDoc, normalizeClass, 'class') : null;
     });
   },
 
@@ -286,7 +547,7 @@ export const firebaseService = {
     return withErrorHandling('Failed to load class.', async () => {
       const snapshot = await getDoc(doc(classesCollection, classId));
       if (!snapshot.exists()) return null;
-      return normalizeClass(mapDoc<CoachingClass>(snapshot));
+      return normalizeOptionalSnapshot<CoachingClass>(snapshot, normalizeClass, 'class');
     });
   },
 
@@ -317,7 +578,7 @@ export const firebaseService = {
       });
 
       const snapshot = await getDoc(classRef);
-      return normalizeClass(mapDoc<CoachingClass>(snapshot));
+      return normalizeOptionalSnapshot<CoachingClass>(snapshot, normalizeClass, 'class');
     });
   },
 
@@ -350,7 +611,7 @@ export const firebaseService = {
         updatedAt: serverTimestamp(),
       });
       const snapshot = await getDoc(docRef);
-      return normalizeStudent(mapDoc<Student>(snapshot));
+      return normalizeOptionalSnapshot<Student>(snapshot, normalizeStudent, 'student');
     });
   },
 
@@ -382,7 +643,7 @@ export const firebaseService = {
       ensureClassCanAddTeacher(coachingClass);
 
       const docRef = await addDoc(classTeachersCollection(classId), {
-        ...sanitizeFirestoreData(teacherData),
+        ...prepareTeacherForWrite(teacherData),
         classId,
         joinedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -392,14 +653,14 @@ export const firebaseService = {
         updatedAt: serverTimestamp(),
       });
       const snapshot = await getDoc(docRef);
-      return normalizeTeacher(mapDoc<Teacher>(snapshot));
+      return normalizeOptionalSnapshot<Teacher>(snapshot, normalizeTeacher, 'teacher');
     });
   },
 
   async updateTeacher(classId: string, teacherId: string, teacherData: Partial<Teacher>) {
     return withErrorHandling('Failed to update teacher.', async () => {
       await updateDoc(doc(classTeachersCollection(classId), teacherId), {
-        ...sanitizeFirestoreData(teacherData),
+        ...prepareTeacherForWrite(teacherData),
         updatedAt: serverTimestamp(),
       });
     });
@@ -424,7 +685,7 @@ export const firebaseService = {
         updatedAt: serverTimestamp(),
       });
       const snapshot = await getDoc(docRef);
-      return normalizeLecture(mapDoc<Lecture>(snapshot));
+      return normalizeOptionalSnapshot<Lecture>(snapshot, normalizeLecture, 'lecture');
     });
   },
 
@@ -466,7 +727,7 @@ export const firebaseService = {
         updatedAt: serverTimestamp(),
       });
       const snapshot = await getDoc(docRef);
-      return normalizeMarks(mapDoc<Marks>(snapshot));
+      return normalizeOptionalSnapshot<Marks>(snapshot, normalizeMarks, 'marks');
     });
   },
 
@@ -488,20 +749,20 @@ export const firebaseService = {
   async addFee(classId: string, feeData: Omit<Fee, 'id' | 'classId'>) {
     return withErrorHandling('Failed to add fee.', async () => {
       const docRef = await addDoc(classFeesCollection(classId), {
-        ...sanitizeFirestoreData(feeData),
+        ...prepareFeeForWrite(feeData),
         classId,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
       const snapshot = await getDoc(docRef);
-      return normalizeFee(mapDoc<Fee>(snapshot));
+      return normalizeOptionalSnapshot<Fee>(snapshot, normalizeFee, 'fee');
     });
   },
 
   async updateFee(classId: string, feeId: string, feeData: Partial<Fee>) {
     return withErrorHandling('Failed to update fee.', async () => {
       await updateDoc(doc(classFeesCollection(classId), feeId), {
-        ...sanitizeFirestoreData(feeData),
+        ...prepareFeeForWrite(feeData),
         updatedAt: serverTimestamp(),
       });
     });
@@ -521,7 +782,7 @@ export const firebaseService = {
         createdAt: serverTimestamp(),
       });
       const snapshot = await getDoc(docRef);
-      return normalizeAuditLog(mapDoc<AuditLog>(snapshot));
+      return normalizeOptionalSnapshot<AuditLog>(snapshot, normalizeAuditLog, 'auditLog');
     });
   },
 
@@ -533,7 +794,7 @@ export const firebaseService = {
         createdAt: serverTimestamp(),
       });
       const snapshot = await getDoc(docRef);
-      return normalizeNotification(mapDoc<NotificationJob>(snapshot));
+      return normalizeOptionalSnapshot<NotificationJob>(snapshot, normalizeNotification, 'notification');
     });
   },
 
@@ -546,7 +807,7 @@ export const firebaseService = {
         updatedAt: serverTimestamp(),
       });
       const snapshot = await getDoc(docRef);
-      return normalizeMessage(mapDoc<Message>(snapshot));
+      return normalizeOptionalSnapshot<Message>(snapshot, normalizeMessage, 'message');
     });
   },
 
@@ -563,7 +824,7 @@ export const firebaseService = {
   subscribeToMessagesForClass(classId: string, callback: (messages: Message[]) => void, onError?: (error: Error) => void) {
     return onSnapshot(
       query(messagesCollection, where('classId', '==', classId), orderBy('createdAt', 'desc')),
-      (snapshot) => callback(snapshot.docs.map((item) => normalizeMessage(mapDoc<Message>(item)))),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeMessage, 'message')),
       (error) => onError?.(new ServiceError('Failed to listen to messages.', error))
     );
   },
@@ -576,7 +837,7 @@ export const firebaseService = {
   ) {
     return onSnapshot(
       query(messagesCollection, where('classId', '==', classId), where('toUserId', '==', userId), orderBy('createdAt', 'desc')),
-      (snapshot) => callback(snapshot.docs.map((item) => normalizeMessage(mapDoc<Message>(item)))),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeMessage, 'message')),
       (error) => onError?.(new ServiceError('Failed to listen to user messages.', error))
     );
   },
@@ -589,7 +850,7 @@ export const firebaseService = {
   ) {
     return onSnapshot(
       query(messagesCollection, where('classId', '==', classId), where('fromUserId', '==', userId), orderBy('createdAt', 'desc')),
-      (snapshot) => callback(snapshot.docs.map((item) => normalizeMessage(mapDoc<Message>(item)))),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeMessage, 'message')),
       (error) => onError?.(new ServiceError('Failed to listen to sent messages.', error))
     );
   },
@@ -597,20 +858,20 @@ export const firebaseService = {
   async createReport(reportData: Omit<ReportCard, 'id' | 'generatedAt' | 'updatedAt'>) {
     return withErrorHandling('Failed to create report card.', async () => {
       const docRef = await addDoc(reportsCollection, {
-        ...sanitizeFirestoreData(reportData),
+        ...prepareReportForWrite(reportData),
         aiStatus: reportData.aiStatus ?? 'not_requested',
         generatedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
       const snapshot = await getDoc(docRef);
-      return normalizeReportCard(mapDoc<ReportCard>(snapshot));
+      return normalizeOptionalSnapshot<ReportCard>(snapshot, normalizeReportCard, 'report');
     });
   },
 
   async updateReport(reportId: string, reportData: Partial<ReportCard>) {
     return withErrorHandling('Failed to update report card.', async () => {
       await updateDoc(doc(reportsCollection, reportId), {
-        ...sanitizeFirestoreData(reportData),
+        ...prepareReportForWrite(reportData),
         updatedAt: serverTimestamp(),
       });
     });
@@ -624,7 +885,7 @@ export const firebaseService = {
   ) {
     return onSnapshot(
       query(reportsCollection, where('classId', '==', classId), where('studentId', '==', studentId), orderBy('generatedAt', 'desc')),
-      (snapshot) => callback(snapshot.docs.map((item) => normalizeReportCard(mapDoc<ReportCard>(item)))),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeReportCard, 'report')),
       (error) => onError?.(new ServiceError('Failed to listen to report cards.', error))
     );
   },
@@ -632,7 +893,7 @@ export const firebaseService = {
   subscribeToClassReports(classId: string, callback: (reports: ReportCard[]) => void, onError?: (error: Error) => void) {
     return onSnapshot(
       query(reportsCollection, where('classId', '==', classId), orderBy('generatedAt', 'desc')),
-      (snapshot) => callback(snapshot.docs.map((item) => normalizeReportCard(mapDoc<ReportCard>(item)))),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeReportCard, 'report')),
       (error) => onError?.(new ServiceError('Failed to listen to class reports.', error))
     );
   },
@@ -646,7 +907,7 @@ export const firebaseService = {
         updatedAt: serverTimestamp(),
       });
       const snapshot = await getDoc(docRef);
-      return normalizeAnalyticsSnapshot(mapDoc<AnalyticsSnapshot>(snapshot));
+      return normalizeOptionalSnapshot<AnalyticsSnapshot>(snapshot, normalizeAnalyticsSnapshot, 'analyticsSnapshot');
     });
   },
 
@@ -657,7 +918,7 @@ export const firebaseService = {
   ) {
     return onSnapshot(
       query(analyticsSnapshotsCollection, where('classId', '==', classId), orderBy('createdAt', 'desc')),
-      (snapshot) => callback(snapshot.docs.map((item) => normalizeAnalyticsSnapshot(mapDoc<AnalyticsSnapshot>(item)))),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeAnalyticsSnapshot, 'analyticsSnapshot')),
       (error) => onError?.(new ServiceError('Failed to listen to analytics snapshots.', error))
     );
   },
@@ -669,7 +930,7 @@ export const firebaseService = {
         createdAt: serverTimestamp(),
       });
       const snapshot = await getDoc(docRef);
-      return normalizeAIUsageLog(mapDoc<AIUsageLog>(snapshot));
+      return normalizeOptionalSnapshot<AIUsageLog>(snapshot, normalizeAIUsageLog, 'aiUsageLog');
     });
   },
 
@@ -688,7 +949,7 @@ export const firebaseService = {
   ) {
     return onSnapshot(
       query(aiUsageCollection, where('classId', '==', classId), where('monthKey', '==', monthKey), orderBy('createdAt', 'desc')),
-      (snapshot) => callback(snapshot.docs.map((item) => normalizeAIUsageLog(mapDoc<AIUsageLog>(item)))),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeAIUsageLog, 'aiUsageLog')),
       (error) => onError?.(new ServiceError('Failed to listen to AI usage.', error))
     );
   },
@@ -696,7 +957,7 @@ export const firebaseService = {
   subscribeToStudents(classId: string, callback: (students: Student[]) => void, onError?: (error: Error) => void) {
     return onSnapshot(
       query(classStudentsCollection(classId), orderBy('joinedAt', 'desc')),
-      (snapshot) => callback(snapshot.docs.map((item) => normalizeStudent(mapDoc<Student>(item)))),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeStudent, 'student')),
       (error) => onError?.(new ServiceError('Failed to listen to students.', error))
     );
   },
@@ -704,7 +965,7 @@ export const firebaseService = {
   subscribeToAllUsers(callback: (users: User[]) => void, onError?: (error: Error) => void) {
     return onSnapshot(
       usersCollection,
-      (snapshot) => callback(snapshot.docs.map((item) => normalizeUser(mapDoc<User>(item)))),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeUser, 'user')),
       (error) => onError?.(new ServiceError('Failed to listen to users.', error))
     );
   },
@@ -712,7 +973,7 @@ export const firebaseService = {
   subscribeToAllClasses(callback: (classes: CoachingClass[]) => void, onError?: (error: Error) => void) {
     return onSnapshot(
       classesCollection,
-      (snapshot) => callback(snapshot.docs.map((item) => normalizeClass(mapDoc<CoachingClass>(item)))),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeClass, 'class')),
       (error) => onError?.(new ServiceError('Failed to listen to classes.', error))
     );
   },
@@ -720,7 +981,7 @@ export const firebaseService = {
   subscribeToClassUsers(classId: string, callback: (users: User[]) => void, onError?: (error: Error) => void) {
     return onSnapshot(
       query(usersCollection, where('classIds', 'array-contains', classId)),
-      (snapshot) => callback(snapshot.docs.map((item) => normalizeUser(mapDoc<User>(item)))),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeUser, 'user')),
       (error) => onError?.(new ServiceError('Failed to listen to class users.', error))
     );
   },
@@ -733,7 +994,7 @@ export const firebaseService = {
   ) {
     return onSnapshot(
       query(classStudentsCollection(classId), where('email', '==', email)),
-      (snapshot) => callback(snapshot.docs[0] ? normalizeStudent(mapDoc<Student>(snapshot.docs[0])) : null),
+      (snapshot) => callback(snapshot.docs[0] ? normalizeDoc<Student>(snapshot.docs[0], normalizeStudent, 'student') : null),
       (error) => onError?.(new ServiceError('Failed to listen to student profile.', error))
     );
   },
@@ -746,7 +1007,7 @@ export const firebaseService = {
   ) {
     return onSnapshot(
       query(classStudentsCollection(classId), where('parentEmail', '==', email)),
-      (snapshot) => callback(snapshot.docs[0] ? normalizeStudent(mapDoc<Student>(snapshot.docs[0])) : null),
+      (snapshot) => callback(snapshot.docs[0] ? normalizeDoc<Student>(snapshot.docs[0], normalizeStudent, 'student') : null),
       (error) => onError?.(new ServiceError('Failed to listen to linked child.', error))
     );
   },
@@ -759,29 +1020,17 @@ export const firebaseService = {
   ) {
     return onSnapshot(
       classStudentDoc(classId, studentId),
-      (snapshot) => callback(snapshot.exists() ? normalizeStudent(mapDoc<Student>(snapshot)) : null),
+      (snapshot) => callback(normalizeOptionalSnapshot<Student>(snapshot, normalizeStudent, 'student')),
       (error) => onError?.(new ServiceError('Failed to listen to student profile.', error))
     );
   },
 
-  subscribeToTeachers(classId: string, onUpdate: (teachers: Teacher[]) => void) {
-    const q = query(
-      usersCollection,
-      where('classIds', 'array-contains', classId)
+  subscribeToTeachers(classId: string, onUpdate: (teachers: Teacher[]) => void, onError?: (error: Error) => void) {
+    return onSnapshot(
+      query(classTeachersCollection(classId), orderBy('joinedAt', 'desc')),
+      (snapshot) => onUpdate(normalizeSnapshotDocs(snapshot.docs, normalizeTeacher, 'teacher')),
+      (error) => onError?.(new ServiceError('Failed to listen to teachers.', error))
     );
-    return onSnapshot(q, (snapshot) => {
-      onUpdate(
-        snapshot.docs
-          .map(
-            (doc) =>
-              ({
-                id: doc.id,
-                ...doc.data(),
-              }) as unknown as Teacher
-          )
-          .filter((t: any) => t.role === 'teacher')
-      );
-    });
   },
 
   async getPendingApprovals(classId: string) {
@@ -791,12 +1040,7 @@ export const firebaseService = {
         where('classIds', 'array-contains', classId)
       );
       const snapshot = await getDocs(q);
-      return snapshot.docs
-        .map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }))
-        .filter((u: any) => u.approved === false) as User[];
+      return normalizeSnapshotDocs(snapshot.docs, normalizeUser, 'user').filter((user) => user.approved === false);
     });
   },
 
@@ -848,7 +1092,7 @@ export const firebaseService = {
   ) {
     return onSnapshot(
       query(classTeachersCollection(classId), where('email', '==', email)),
-      (snapshot) => callback(snapshot.docs[0] ? normalizeTeacher(mapDoc<Teacher>(snapshot.docs[0])) : null),
+      (snapshot) => callback(snapshot.docs[0] ? normalizeDoc<Teacher>(snapshot.docs[0], normalizeTeacher, 'teacher') : null),
       (error) => onError?.(new ServiceError('Failed to listen to teacher profile.', error))
     );
   },
@@ -856,7 +1100,7 @@ export const firebaseService = {
   subscribeToLectures(classId: string, callback: (lectures: Lecture[]) => void, onError?: (error: Error) => void) {
     return onSnapshot(
       query(classLecturesCollection(classId), orderBy('date', 'asc')),
-      (snapshot) => callback(snapshot.docs.map((item) => normalizeLecture(mapDoc<Lecture>(item)))),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeLecture, 'lecture')),
       (error) => onError?.(new ServiceError('Failed to listen to lectures.', error))
     );
   },
@@ -869,7 +1113,7 @@ export const firebaseService = {
   ) {
     return onSnapshot(
       query(classLecturesCollection(classId), where('batch', '==', batch), orderBy('date', 'asc')),
-      (snapshot) => callback(snapshot.docs.map((item) => normalizeLecture(mapDoc<Lecture>(item)))),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeLecture, 'lecture')),
       (error) => onError?.(new ServiceError('Failed to listen to lectures.', error))
     );
   },
@@ -881,7 +1125,7 @@ export const firebaseService = {
   ) {
     return onSnapshot(
       classAttendanceCollection(classId),
-      (snapshot) => callback(snapshot.docs.map((item) => normalizeAttendance(mapDoc<Attendance>(item)))),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeAttendance, 'attendance')),
       (error) => onError?.(new ServiceError('Failed to listen to attendance.', error))
     );
   },
@@ -894,7 +1138,7 @@ export const firebaseService = {
   ) {
     return onSnapshot(
       query(classAttendanceCollection(classId), where('studentId', '==', studentId)),
-      (snapshot) => callback(snapshot.docs.map((item) => normalizeAttendance(mapDoc<Attendance>(item)))),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeAttendance, 'attendance')),
       (error) => onError?.(new ServiceError('Failed to listen to attendance.', error))
     );
   },
@@ -902,7 +1146,7 @@ export const firebaseService = {
   subscribeToMarks(classId: string, callback: (marks: Marks[]) => void, onError?: (error: Error) => void) {
     return onSnapshot(
       query(classMarksCollection(classId), orderBy('date', 'desc')),
-      (snapshot) => callback(snapshot.docs.map((item) => normalizeMarks(mapDoc<Marks>(item)))),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeMarks, 'marks')),
       (error) => onError?.(new ServiceError('Failed to listen to marks.', error))
     );
   },
@@ -915,7 +1159,7 @@ export const firebaseService = {
   ) {
     return onSnapshot(
       query(classMarksCollection(classId), where('studentId', '==', studentId), orderBy('date', 'desc')),
-      (snapshot) => callback(snapshot.docs.map((item) => normalizeMarks(mapDoc<Marks>(item)))),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeMarks, 'marks')),
       (error) => onError?.(new ServiceError('Failed to listen to marks.', error))
     );
   },
@@ -923,7 +1167,7 @@ export const firebaseService = {
   subscribeToFees(classId: string, callback: (fees: Fee[]) => void, onError?: (error: Error) => void) {
     return onSnapshot(
       query(classFeesCollection(classId), orderBy('dueDate', 'asc')),
-      (snapshot) => callback(snapshot.docs.map((item) => normalizeFee(mapDoc<Fee>(item)))),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeFee, 'fee')),
       (error) => onError?.(new ServiceError('Failed to listen to fees.', error))
     );
   },
@@ -936,7 +1180,7 @@ export const firebaseService = {
   ) {
     return onSnapshot(
       query(classFeesCollection(classId), where('studentId', '==', studentId), orderBy('dueDate', 'asc')),
-      (snapshot) => callback(snapshot.docs.map((item) => normalizeFee(mapDoc<Fee>(item)))),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeFee, 'fee')),
       (error) => onError?.(new ServiceError('Failed to listen to fees.', error))
     );
   },
@@ -953,8 +1197,7 @@ export const firebaseService = {
         )
       );
 
-      const validInvite = existing.docs
-        .map((item) => normalizeInvite(mapDoc<Invite>(item)))
+      const validInvite = normalizeSnapshotDocs(existing.docs, normalizeInvite, 'invite')
         .find((invite) => !invite.expiresAt || new Date(invite.expiresAt) > new Date());
 
       if (validInvite) {
@@ -969,7 +1212,7 @@ export const firebaseService = {
         updatedAt: serverTimestamp(),
       });
       const snapshot = await getDoc(inviteRef);
-      return normalizeInvite(mapDoc<Invite>(snapshot));
+      return normalizeOptionalSnapshot<Invite>(snapshot, normalizeInvite, 'invite');
     });
   },
 
@@ -978,8 +1221,7 @@ export const firebaseService = {
       const snapshot = await getDocs(
         query(invitesCollection, where('email', '==', email), where('status', '==', 'pending'))
       );
-      return snapshot.docs
-        .map((item) => normalizeInvite(mapDoc<Invite>(item)))
+      return normalizeSnapshotDocs(snapshot.docs, normalizeInvite, 'invite')
         .filter((invite) => !invite.expiresAt || new Date(invite.expiresAt) > new Date());
     });
   },
