@@ -27,6 +27,8 @@ import MessagingCenter from './components/Management/MessagingCenter';
 import ReportCardManagement from './components/Management/ReportCardManagement';
 import AnalyticsDashboard from './components/Management/AnalyticsDashboard';
 import AdminAIWorkspace from './components/Management/AdminAIWorkspace';
+import { firebaseService } from './services/firebaseService';
+import { Student } from './types';
 
 const Unauthorized: React.FC = () => (
   <div className="p-8 text-center">
@@ -146,6 +148,58 @@ const LoadingScreen: React.FC = () => (
     <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
   </div>
 );
+
+const StudentAssignmentGate: React.FC = () => {
+  const { user, currentClass } = useAuth();
+  const [student, setStudent] = useState<Student | null>(null);
+  const [isCheckingStudent, setIsCheckingStudent] = useState(true);
+
+  useEffect(() => {
+    if (!currentClass?.id || !user?.id) {
+      setStudent(null);
+      setIsCheckingStudent(false);
+      return;
+    }
+
+    setIsCheckingStudent(true);
+    return firebaseService.subscribeToStudentById(
+      currentClass.id,
+      user.id,
+      (nextStudent) => {
+        setStudent(nextStudent);
+        setIsCheckingStudent(false);
+      },
+      () => {
+        setStudent(null);
+        setIsCheckingStudent(false);
+      }
+    );
+  }, [currentClass?.id, user?.id]);
+
+  if (isCheckingStudent) {
+    return <LoadingScreen />;
+  }
+
+  if (!student) {
+    return (
+      <ValidationScreen
+        title="Student Profile Pending"
+        description="Your account is approved, but your student profile has not been provisioned in this class yet."
+      />
+    );
+  }
+
+  if (!student.batchId) {
+    return (
+      <ValidationScreen
+        title="Batch Assignment Pending"
+        description="Your student account is approved, but no batch has been assigned yet."
+      />
+    );
+  }
+
+  return <TenantAppShell />;
+};
 
 const BranchSelectionScreen: React.FC<{ classes: Array<{ id: string; name: string; subdomain: string }>; onSelect: (classId: string, subdomain: string) => void }> = ({ classes, onSelect }) => (
   <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-orange-50 flex items-center justify-center px-4">
@@ -501,10 +555,6 @@ const TenantRoute: React.FC = () => {
     return <PendingApprovalScreen />;
   }
 
-  if (user.role === 'student' && !user.batchId) {
-    return <ValidationScreen title="Batch Assignment Pending" description="Your student account is approved, but no batch has been assigned yet." />;
-  }
-
   if (user.role === 'parent' && ((user.linkedStudentIds?.length ?? 0) === 0) && !user.linkedStudentId) {
     return <ValidationScreen title="Student Link Pending" description="Your parent account is approved, but no student has been linked yet." />;
   }
@@ -522,6 +572,10 @@ const TenantRoute: React.FC = () => {
 
   if (currentClass.isActive === false) {
     return <InactiveClassScreen className={currentClass.name} plan={currentClass.plan} />;
+  }
+
+  if (user.role === 'student') {
+    return <StudentAssignmentGate />;
   }
 
   return <TenantAppShell />;

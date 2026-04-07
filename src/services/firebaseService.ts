@@ -443,13 +443,23 @@ const sanitizeFirestoreData = <T>(value: T): T => {
   return value;
 };
 
-const prepareUserForWrite = (user: Omit<User, 'createdAt'> & { createdAt?: string }) => ({
-  ...sanitizeFirestoreData(user),
-  classIds: asStringArray(user.classIds ?? (user.classId ? [user.classId] : [])),
-  branchIds: asStringArray(user.branchIds),
-  linkedStudentIds: asStringArray(user.linkedStudentIds ?? (user.linkedStudentId ? [user.linkedStudentId] : [])),
-  batchId: asNullableString(user.batchId) ?? null,
-});
+const prepareUserForWrite = (user: Omit<User, 'createdAt'> & { createdAt?: string }) => {
+  const normalizedRole =
+    ['super_admin', 'admin', 'teacher', 'student', 'parent'].includes(asString(user.role)) ? user.role : 'student';
+  const linkedStudentIds =
+    normalizedRole === 'parent'
+      ? asStringArray(user.linkedStudentIds ?? (user.linkedStudentId ? [user.linkedStudentId] : []))
+      : [];
+
+  return {
+    ...sanitizeFirestoreData(user),
+    classIds: asStringArray(user.classIds ?? (user.classId ? [user.classId] : [])),
+    branchIds: asStringArray(user.branchIds),
+    linkedStudentIds,
+    linkedStudentId: normalizedRole === 'parent' ? asNullableString(user.linkedStudentId) ?? null : null,
+    batchId: normalizedRole === 'student' ? asNullableString(user.batchId) ?? null : null,
+  };
+};
 
 const prepareTeacherForWrite = (teacher: Omit<Teacher, 'id' | 'classId' | 'joinedAt'> | Partial<Teacher>) => ({
   ...sanitizeFirestoreData(teacher),
