@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowRight, ChevronRight, Route, School, ShieldCheck, Users } from 'lucide-react';
+import { ArrowRight, ChevronRight, LogOut, RefreshCw, Route, School, ShieldCheck, Users } from 'lucide-react';
 import { Navigate, Route as RouterRoute, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAuth, AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -35,12 +35,88 @@ const Unauthorized: React.FC = () => (
   </div>
 );
 
-const ValidationScreen: React.FC<{ title: string; description: string }> = ({ title, description }) => (
-  <div className="p-8 text-center">
-    <h2 className="text-2xl font-semibold text-gray-900">{title}</h2>
-    <p className="mt-2 text-gray-600">{description}</p>
-  </div>
-);
+const ValidationScreen: React.FC<{ title: string; description: string }> = ({ title, description }) => {
+  const { logout, refreshUserData, currentClass } = useAuth();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
+
+  const handleRefresh = async () => {
+    try {
+      setIsRefreshing(true);
+      await refreshUserData();
+      setLastCheckedAt(
+        new Date().toLocaleTimeString('en-IN', {
+          hour: 'numeric',
+          minute: '2-digit',
+          second: '2-digit',
+        })
+      );
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    const runRefresh = async () => {
+      try {
+        setIsRefreshing(true);
+        await refreshUserData();
+        setLastCheckedAt(
+          new Date().toLocaleTimeString('en-IN', {
+            hour: 'numeric',
+            minute: '2-digit',
+            second: '2-digit',
+          })
+        );
+      } finally {
+        setIsRefreshing(false);
+      }
+    };
+
+    void runRefresh();
+
+    const intervalId = window.setInterval(() => {
+      void runRefresh();
+    }, 10000);
+
+    return () => window.clearInterval(intervalId);
+  }, [refreshUserData]);
+
+  return (
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4">
+      <div className="w-full max-w-xl rounded-2xl border border-amber-100 bg-white p-8 text-center shadow-sm">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 mb-4">
+          <RefreshCw className={`h-6 w-6 text-amber-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+        </div>
+        <h2 className="text-2xl font-semibold text-gray-900">{title}</h2>
+        <p className="mt-3 text-gray-600">{description}</p>
+        <p className="mt-2 text-sm text-gray-500">
+          {currentClass?.name ? `Contact the admin of ${currentClass.name} if this status does not change soon.` : 'Contact your class admin if this status does not change soon.'}
+        </p>
+        <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <button
+            onClick={() => void handleRefresh()}
+            disabled={isRefreshing}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>{isRefreshing ? 'Checking...' : 'Refresh Status'}</span>
+          </button>
+          <button
+            onClick={() => void logout()}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50"
+          >
+            <LogOut className="h-4 w-4" />
+            <span>Logout</span>
+          </button>
+        </div>
+        <p className="mt-4 text-xs text-gray-400">
+          {lastCheckedAt ? `Last checked at ${lastCheckedAt}.` : 'Checking your status automatically every 10 seconds.'}
+        </p>
+      </div>
+    </div>
+  );
+};
 
 const PendingApprovalScreen: React.FC = () => {
   const { logout } = useAuth();
