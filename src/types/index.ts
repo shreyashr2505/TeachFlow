@@ -11,6 +11,7 @@ export interface User {
   branchIds?: string[];
   subscriptionPlan?: 'free' | 'standard' | 'pro';
   linkedStudentId?: string;
+  batchId?: string;
 }
 
 export interface CoachingClass {
@@ -144,6 +145,7 @@ export interface Student {
   email: string;
   phone?: string;
   batch: string;
+  batchId?: string;
   parentEmail?: string;
   parentId?: string;
   parentPhone?: string;
@@ -162,6 +164,7 @@ export interface Teacher {
   phone?: string;
   subjects: string[];
   batches: string[];
+  batchIds?: string[];
   classId: string;
   joinedAt: string;
   salary?: number;
@@ -172,6 +175,7 @@ export interface Lecture {
   title: string;
   subject: string;
   batch: string;
+  batchId?: string;
   teacherId: string;
   teacherName: string;
   date: string;
@@ -247,17 +251,10 @@ export interface FeePayment {
 export interface Batch {
   id: string;
   name: string;
+  timing: string;
+  teacherId?: string;
+  teacherName?: string;
   subjects: string[];
   classId: string;
-  teacherIds: string[];
-  studentCount: number;
-  schedule: BatchSchedule[];
-}
-
-export interface BatchSchedule {
-  day: string;
-  time: string;
-  subject: string;
-  teacherId: string;
-  duration: number;
+  createdAt: string;
 }

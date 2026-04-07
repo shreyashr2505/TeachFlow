@@ -20,6 +20,7 @@ import { db } from './firebase';
 import {
   Attendance,
   AnalyticsSnapshot,
+  Batch,
   CoachingClass,
   Fee,
   Invite,
@@ -126,6 +127,7 @@ const aiUsageCollection = collection(db, 'aiUsageLogs');
 const classStudentsCollection = (classId: string) => collection(db, 'classes', classId, 'students');
 const classTeachersCollection = (classId: string) => collection(db, 'classes', classId, 'teachers');
 const classLecturesCollection = (classId: string) => collection(db, 'classes', classId, 'lectures');
+const classBatchesCollection = (classId: string) => collection(db, 'classes', classId, 'batches');
 const classAttendanceCollection = (classId: string) => collection(db, 'classes', classId, 'attendance');
 const classMarksCollection = (classId: string) => collection(db, 'classes', classId, 'marks');
 const classFeesCollection = (classId: string) => collection(db, 'classes', classId, 'fees');
@@ -158,6 +160,7 @@ const normalizeUser = (user: User): User => ({
   branchIds: asStringArray(user.branchIds),
   subscriptionPlan: ['free', 'standard', 'pro'].includes(asString(user.subscriptionPlan)) ? user.subscriptionPlan : undefined,
   linkedStudentId: asNullableString(user.linkedStudentId),
+  batchId: asNullableString(user.batchId),
 });
 
 const normalizeClass = (coachingClass: CoachingClass): CoachingClass => ({
@@ -190,6 +193,7 @@ const normalizeStudent = (student: Student): Student => ({
   email: asString(student.email),
   phone: asNullableString(student.phone),
   batch: asString(student.batch, 'Batch A'),
+  batchId: asNullableString(student.batchId),
   parentEmail: asNullableString(student.parentEmail),
   parentId: asNullableString(student.parentId),
   parentPhone: asNullableString(student.parentPhone),
@@ -211,6 +215,7 @@ const normalizeTeacher = (teacher: Teacher): Teacher => ({
   joinedAt: toIsoString(teacher.joinedAt),
   subjects: asStringArray(teacher.subjects),
   batches: asStringArray(teacher.batches),
+  batchIds: asStringArray(teacher.batchIds),
   salary: teacher.salary == null ? undefined : asNumber(teacher.salary, 0),
 });
 
@@ -220,6 +225,7 @@ const normalizeLecture = (lecture: Lecture): Lecture => ({
   title: asString(lecture.title, 'Untitled Lecture'),
   subject: asString(lecture.subject, 'General'),
   batch: asString(lecture.batch, 'Batch A'),
+  batchId: asNullableString(lecture.batchId),
   teacherId: asString(lecture.teacherId),
   teacherName: asString(lecture.teacherName, 'Teacher'),
   date: asString(lecture.date),
@@ -228,6 +234,17 @@ const normalizeLecture = (lecture: Lecture): Lecture => ({
   classId: asString(lecture.classId),
   status: ['scheduled', 'completed', 'cancelled'].includes(asString(lecture.status)) ? lecture.status : 'scheduled',
   description: asNullableString(lecture.description),
+});
+const normalizeBatch = (batch: Batch): Batch => ({
+  ...batch,
+  id: asString(batch.id),
+  name: asString(batch.name, 'Untitled Batch'),
+  timing: asString(batch.timing, 'TBD'),
+  teacherId: asNullableString(batch.teacherId),
+  teacherName: asNullableString(batch.teacherName),
+  subjects: asStringArray(batch.subjects),
+  classId: asString(batch.classId),
+  createdAt: toIsoString(batch.createdAt),
 });
 const normalizeAttendance = (attendance: Attendance): Attendance => ({
   ...attendance,
@@ -423,12 +440,29 @@ const prepareUserForWrite = (user: Omit<User, 'createdAt'> & { createdAt?: strin
   ...sanitizeFirestoreData(user),
   classIds: asStringArray(user.classIds ?? (user.classId ? [user.classId] : [])),
   branchIds: asStringArray(user.branchIds),
+  batchId: asNullableString(user.batchId) ?? null,
 });
 
 const prepareTeacherForWrite = (teacher: Omit<Teacher, 'id' | 'classId' | 'joinedAt'> | Partial<Teacher>) => ({
   ...sanitizeFirestoreData(teacher),
   subjects: asStringArray(teacher.subjects),
   batches: asStringArray(teacher.batches),
+  batchIds: asStringArray(teacher.batchIds),
+});
+
+const prepareLectureForWrite = (lecture: Omit<Lecture, 'id' | 'classId'> | Partial<Lecture>) => ({
+  ...sanitizeFirestoreData(lecture),
+  batch: asString(lecture.batch, 'Batch A'),
+  batchId: asNullableString(lecture.batchId) ?? null,
+});
+
+const prepareBatchForWrite = (batch: Omit<Batch, 'id' | 'classId' | 'createdAt'> | Partial<Batch>) => ({
+  ...sanitizeFirestoreData(batch),
+  name: asString(batch.name, 'Batch'),
+  timing: asString(batch.timing, 'TBD'),
+  teacherId: asNullableString(batch.teacherId) ?? null,
+  teacherName: asNullableString(batch.teacherName) ?? null,
+  subjects: asStringArray(batch.subjects),
 });
 
 const prepareFeeForWrite = (fee: Omit<Fee, 'id' | 'classId'> | Partial<Fee>) => ({
@@ -679,7 +713,7 @@ export const firebaseService = {
   async addLecture(classId: string, lectureData: Omit<Lecture, 'id' | 'classId'>) {
     return withErrorHandling('Failed to create lecture.', async () => {
       const docRef = await addDoc(classLecturesCollection(classId), {
-        ...sanitizeFirestoreData(lectureData),
+        ...prepareLectureForWrite(lectureData),
         classId,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -692,7 +726,7 @@ export const firebaseService = {
   async updateLecture(classId: string, lectureId: string, lectureData: Partial<Lecture>) {
     return withErrorHandling('Failed to update lecture.', async () => {
       await updateDoc(doc(classLecturesCollection(classId), lectureId), {
-        ...sanitizeFirestoreData(lectureData),
+        ...prepareLectureForWrite(lectureData),
         updatedAt: serverTimestamp(),
       });
     });
@@ -701,6 +735,34 @@ export const firebaseService = {
   async deleteLecture(classId: string, lectureId: string) {
     return withErrorHandling('Failed to delete lecture.', async () => {
       await deleteDoc(doc(classLecturesCollection(classId), lectureId));
+    });
+  },
+
+  async addBatch(classId: string, batchData: Omit<Batch, 'id' | 'classId' | 'createdAt'>) {
+    return withErrorHandling('Failed to create batch.', async () => {
+      const docRef = await addDoc(classBatchesCollection(classId), {
+        ...prepareBatchForWrite(batchData),
+        classId,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      const snapshot = await getDoc(docRef);
+      return normalizeOptionalSnapshot<Batch>(snapshot, normalizeBatch, 'batch');
+    });
+  },
+
+  async updateBatch(classId: string, batchId: string, batchData: Partial<Batch>) {
+    return withErrorHandling('Failed to update batch.', async () => {
+      await updateDoc(doc(classBatchesCollection(classId), batchId), {
+        ...prepareBatchForWrite(batchData),
+        updatedAt: serverTimestamp(),
+      });
+    });
+  },
+
+  async deleteBatch(classId: string, batchId: string) {
+    return withErrorHandling('Failed to delete batch.', async () => {
+      await deleteDoc(doc(classBatchesCollection(classId), batchId));
     });
   },
 
@@ -1033,6 +1095,14 @@ export const firebaseService = {
     );
   },
 
+  subscribeToBatches(classId: string, callback: (batches: Batch[]) => void, onError?: (error: Error) => void) {
+    return onSnapshot(
+      query(classBatchesCollection(classId), orderBy('createdAt', 'asc')),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeBatch, 'batch')),
+      (error) => onError?.(new ServiceError('Failed to listen to batches.', error))
+    );
+  },
+
   async getPendingApprovals(classId: string) {
     return withErrorHandling('Failed to load pending approvals.', async () => {
       const q = query(
@@ -1051,6 +1121,83 @@ export const firebaseService = {
         approved: true,
         updatedAt: serverTimestamp(),
       });
+    });
+  },
+
+  async approvePendingUser(input: {
+    userId: string;
+    classId: string;
+    role: User['role'];
+    batchId?: string;
+    batchName?: string;
+    linkedStudentId?: string;
+  }) {
+    return withErrorHandling('Failed to approve user with assignment.', async () => {
+      const userRef = doc(usersCollection, input.userId);
+      const userSnapshot = await getDoc(userRef);
+      if (!userSnapshot.exists()) {
+        throw new Error('Pending user not found.');
+      }
+
+      const userData = normalizeOptionalSnapshot<User>(userSnapshot, normalizeUser, 'user');
+      if (!userData) {
+        throw new Error('Pending user data is invalid.');
+      }
+
+      const batchName = input.batchName ?? 'Batch A';
+
+      await updateDoc(userRef, {
+        approved: true,
+        role: input.role,
+        classIds: [input.classId],
+        classId: input.classId,
+        activeClassId: input.classId,
+        batchId: input.batchId ?? null,
+        linkedStudentId: input.linkedStudentId ?? null,
+        updatedAt: serverTimestamp(),
+      });
+
+      if (input.role === 'student') {
+        await setDoc(
+          doc(classStudentsCollection(input.classId), input.userId),
+          sanitizeFirestoreData({
+            name: userData.name,
+            email: userData.email,
+            phone: '',
+            batch: batchName,
+            batchId: input.batchId ?? null,
+            parentEmail: '',
+            parentPhone: '',
+            rollNumber: `AUTO-${input.userId.slice(0, 6).toUpperCase()}`,
+            totalFees: 0,
+            paidFees: 0,
+            feeStatus: 'due',
+            classId: input.classId,
+            joinedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          }),
+          { merge: true }
+        );
+      }
+
+      if (input.role === 'teacher') {
+        await setDoc(
+          doc(classTeachersCollection(input.classId), input.userId),
+          sanitizeFirestoreData({
+            name: userData.name,
+            email: userData.email,
+            phone: '',
+            subjects: [],
+            batches: input.batchId ? [batchName] : [],
+            batchIds: input.batchId ? [input.batchId] : [],
+            salary: 0,
+            classId: input.classId,
+            joinedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          }),
+          { merge: true }
+        );
+      }
     });
   },
 
@@ -1097,6 +1244,21 @@ export const firebaseService = {
     );
   },
 
+  async updateStudentBatch(classId: string, studentId: string, batch: { id: string; name: string }) {
+    return withErrorHandling('Failed to update student batch.', async () => {
+      await updateDoc(doc(classStudentsCollection(classId), studentId), {
+        batchId: batch.id,
+        batch: batch.name,
+        updatedAt: serverTimestamp(),
+      });
+
+      await updateDoc(doc(usersCollection, studentId), {
+        batchId: batch.id,
+        updatedAt: serverTimestamp(),
+      });
+    });
+  },
+
   subscribeToLectures(classId: string, callback: (lectures: Lecture[]) => void, onError?: (error: Error) => void) {
     return onSnapshot(
       query(classLecturesCollection(classId), orderBy('date', 'asc')),
@@ -1115,6 +1277,19 @@ export const firebaseService = {
       query(classLecturesCollection(classId), where('batch', '==', batch), orderBy('date', 'asc')),
       (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeLecture, 'lecture')),
       (error) => onError?.(new ServiceError('Failed to listen to lectures.', error))
+    );
+  },
+
+  subscribeToLecturesByBatchId(
+    classId: string,
+    batchId: string,
+    callback: (lectures: Lecture[]) => void,
+    onError?: (error: Error) => void
+  ) {
+    return onSnapshot(
+      query(classLecturesCollection(classId), where('batchId', '==', batchId), orderBy('date', 'asc')),
+      (snapshot) => callback(normalizeSnapshotDocs(snapshot.docs, normalizeLecture, 'lecture')),
+      (error) => onError?.(new ServiceError('Failed to listen to batch lectures.', error))
     );
   },
 

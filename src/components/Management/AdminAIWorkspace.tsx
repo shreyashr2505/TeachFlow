@@ -118,6 +118,7 @@ const AdminAIWorkspace: React.FC = () => {
     () => usageLogs.reduce((sum, item) => sum + item.totalTokens, 0),
     [usageLogs]
   );
+  const usagePercentage = Math.min(Math.round((usedTokens / Math.max(monthlyLimit, 1)) * 100), 100);
 
   const runAction = async (action: string, work: () => Promise<string>, onSuccess: (result: string) => void) => {
     setError('');
@@ -148,6 +149,10 @@ const AdminAIWorkspace: React.FC = () => {
         <div className="rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4">
           <div className="text-xs uppercase tracking-wide text-blue-700">Monthly AI Usage</div>
           <div className="mt-1 text-2xl font-bold text-blue-900">{usedTokens} / {monthlyLimit}</div>
+          <div className="mt-3 h-2 rounded-full bg-blue-100">
+            <div className="h-2 rounded-full bg-gradient-to-r from-blue-600 to-purple-600" style={{ width: `${usagePercentage}%` }} />
+          </div>
+          <div className="mt-2 text-xs text-blue-700">{usagePercentage}% of monthly token budget used</div>
         </div>
       </div>
 

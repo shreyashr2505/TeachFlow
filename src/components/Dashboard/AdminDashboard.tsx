@@ -59,6 +59,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) => {
   const quickActions = [
     { id: 'students', title: 'Add Student', description: 'Create student profiles in this class', icon: GraduationCap },
     { id: 'teachers', title: 'Add Teacher', description: 'Assign teachers to batches', icon: UserCheck },
+    { id: 'batches', title: 'Manage Batches', description: 'Create and map batch schedules', icon: BookOpen },
     { id: 'lectures', title: 'Schedule Lecture', description: 'Plan class sessions', icon: BookOpen },
     { id: 'attendance', title: 'Attendance', description: 'Track lecture attendance', icon: Calendar },
     { id: 'marks', title: 'Marks', description: 'Enter performance data', icon: FileText },

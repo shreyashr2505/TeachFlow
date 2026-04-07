@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Edit, GraduationCap, Plus, Search, Trash2, User } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { firebaseService } from '../../services/firebaseService';
-import { Student, Teacher } from '../../types';
+import { Batch, Student, Teacher } from '../../types';
 import FeedbackMessage from '../Common/FeedbackMessage';
 import EmptyState from '../Common/EmptyState';
 import { isPositiveNumber, isValidEmail, isValidPhone, validateRequired } from '../../utils/validation';
@@ -23,6 +23,7 @@ const StudentManagement: React.FC = () => {
   const { currentClass, user } = useAuth();
   const [students, setStudents] = useState<Student[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [batchesData, setBatchesData] = useState<Batch[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBatch, setSelectedBatch] = useState('all');
   const [showModal, setShowModal] = useState(false);
@@ -40,6 +41,7 @@ const StudentManagement: React.FC = () => {
     const unsubs = [
       firebaseService.subscribeToStudents(currentClass.id, setStudents),
       firebaseService.subscribeToTeachers(currentClass.id, setTeachers),
+      firebaseService.subscribeToBatches(currentClass.id, setBatchesData),
     ];
     return () => unsubs.forEach((unsubscribe) => unsubscribe());
   }, [currentClass?.id]);
@@ -53,9 +55,19 @@ const StudentManagement: React.FC = () => {
   }, [students, teacher, user?.role]);
 
   const batches = useMemo(() => {
-    const found = Array.from(new Set(visibleStudents.map((student) => student.batch)));
+    const found = Array.from(new Set([
+      ...batchesData.map((batch) => batch.name),
+      ...visibleStudents.map((student) => student.batch),
+    ]));
     return found.length > 0 ? found : ['Batch A', 'Batch B', 'Batch C'];
-  }, [visibleStudents]);
+  }, [batchesData, visibleStudents]);
+
+  const batchOptions = useMemo(
+    () => batchesData.length > 0
+      ? batchesData
+      : batches.map((batch) => ({ id: batch, name: batch, timing: 'TBD', subjects: [], classId: currentClass?.id ?? '', createdAt: new Date().toISOString() })),
+    [batches, batchesData, currentClass?.id]
+  );
 
   const filteredStudents = visibleStudents.filter((student) => {
     const query = searchTerm.toLowerCase();
@@ -127,7 +139,10 @@ const StudentManagement: React.FC = () => {
         };
 
     if (editingStudent) {
-      void firebaseService.updateStudent(currentClass.id, editingStudent.id, nextStudent);
+      void firebaseService.updateStudent(currentClass.id, editingStudent.id, {
+        ...nextStudent,
+        batchId: batchOptions.find((item) => item.name === nextStudent.batch)?.id,
+      });
       setSuccess('Student updated successfully.');
     } else {
       void firebaseService.addStudent(currentClass.id, {
@@ -135,6 +150,7 @@ const StudentManagement: React.FC = () => {
         email: nextStudent.email,
         phone: nextStudent.phone,
         batch: nextStudent.batch,
+        batchId: batchOptions.find((item) => item.name === nextStudent.batch)?.id,
         parentEmail: nextStudent.parentEmail,
         parentPhone: nextStudent.parentPhone,
         rollNumber: nextStudent.rollNumber,
@@ -193,6 +209,21 @@ const StudentManagement: React.FC = () => {
   };
 
   const dueCount = visibleStudents.filter((student) => student.feeStatus !== 'paid').length;
+
+  const handleBatchChange = async (studentId: string, batchId: string) => {
+    if (!currentClass?.id) return;
+    const batch = batchOptions.find((item) => item.id === batchId);
+    if (!batch) return;
+
+    setError('');
+    setSuccess('');
+    try {
+      await firebaseService.updateStudentBatch(currentClass.id, studentId, { id: batch.id, name: batch.name });
+      setSuccess('Student batch updated successfully.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update student batch.');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -290,7 +321,23 @@ const StudentManagement: React.FC = () => {
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-700">{student.batch}</td>
+                  <td className="px-6 py-4 text-sm text-gray-700">
+                    {canManageStudents ? (
+                      <select
+                        value={student.batchId ?? batchOptions.find((item) => item.name === student.batch)?.id ?? student.batch}
+                        onChange={(event) => void handleBatchChange(student.id, event.target.value)}
+                        className="rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        {batchOptions.map((batch) => (
+                          <option key={batch.id} value={batch.id}>
+                            {batch.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      student.batch
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-sm text-gray-700">
                     <div>{student.parentEmail || 'Not linked'}</div>
                     <div className="text-gray-500">{student.parentPhone || 'No phone'}</div>
@@ -378,9 +425,9 @@ const StudentManagement: React.FC = () => {
                   onChange={(event) => setFormData((prev) => ({ ...prev, batch: event.target.value }))}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {['Batch A', 'Batch B', 'Batch C', ...batches].filter((item, index, all) => all.indexOf(item) === index).map((batch) => (
-                    <option key={batch} value={batch}>
-                      {batch}
+                  {batchOptions.map((batch) => (
+                    <option key={batch.id} value={batch.name}>
+                      {batch.name}
                     </option>
                   ))}
                 </select>

@@ -100,7 +100,7 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow create: if isSelf(userId);
-      allow read: if isSelf(userId) || isSuperAdmin() || anySharedClass(resource.data.classIds);
+      allow read: if isSelf(userId) || isSuperAdmin() || currentRole() == "admin" || anySharedClass(resource.data.classIds);
       allow update: if isSelf(userId) || isSuperAdmin() || sharesClassAsAdmin(resource.data);
       allow delete: if isSuperAdmin() || sharesClassAsAdmin(resource.data);
     }
@@ -117,6 +117,11 @@ service cloud.firestore {
       }
 
       match /teachers/{teacherId} {
+        allow read: if classMember(classId) || isSuperAdmin();
+        allow write: if classAdmin(classId) || isSuperAdmin();
+      }
+
+      match /batches/{batchId} {
         allow read: if classMember(classId) || isSuperAdmin();
         allow write: if classAdmin(classId) || isSuperAdmin();
       }

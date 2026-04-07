@@ -34,13 +34,17 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ initialTab = 'overv
   }, [currentClass?.id, user?.email, user?.linkedStudentId]);
 
   useEffect(() => {
-    if (!currentClass?.id || !student?.batch) {
+    if (!currentClass?.id || (!student?.batchId && !student?.batch)) {
       setLectures([]);
       return;
     }
 
+    if (student.batchId) {
+      return firebaseService.subscribeToLecturesByBatchId(currentClass.id, student.batchId, setLectures);
+    }
+
     return firebaseService.subscribeToLecturesByBatch(currentClass.id, student.batch, setLectures);
-  }, [currentClass?.id, student?.batch]);
+  }, [currentClass?.id, student?.batch, student?.batchId]);
 
   useEffect(() => {
     if (!currentClass?.id || !student?.id) {
@@ -63,9 +67,9 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ initialTab = 'overv
   const studentLectures = useMemo(
     () =>
       lectures
-        .filter((lecture) => lecture.batch === student?.batch)
+        .filter((lecture) => lecture.batchId === student?.batchId || lecture.batch === student?.batch)
         .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime()),
-    [lectures, student?.batch]
+    [lectures, student?.batch, student?.batchId]
   );
   const studentAttendance = useMemo(
     () =>

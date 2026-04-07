@@ -32,6 +32,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
           { id: 'dashboard', label: 'Dashboard', icon: Home },
           { id: 'students', label: 'Students', icon: GraduationCap },
           { id: 'teachers', label: 'Teachers', icon: UserCheck },
+          { id: 'batches', label: 'Batches', icon: Calendar },
           { id: 'lectures', label: 'Lectures', icon: BookOpen },
           { id: 'attendance', label: 'Attendance', icon: ClipboardList },
           { id: 'marks', label: 'Marks', icon: FileText },

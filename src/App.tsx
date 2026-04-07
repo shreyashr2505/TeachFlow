@@ -14,6 +14,7 @@ import ParentDashboard from './components/Dashboard/ParentDashboard';
 import SuperAdminDashboard from './components/Dashboard/SuperAdminDashboard';
 import StudentManagement from './components/Management/StudentManagement';
 import TeacherManagement from './components/Management/TeacherManagement';
+import BatchManagement from './components/Management/BatchManagement';
 import LectureManagement from './components/Management/LectureManagement';
 import AttendanceManagement from './components/Management/AttendanceManagement';
 import MarksManagement from './components/Management/MarksManagement';
@@ -202,6 +203,8 @@ const TenantAppShell: React.FC = () => {
           return <StudentManagement />;
         case 'teachers':
           return <TeacherManagement />;
+        case 'batches':
+          return <BatchManagement />;
         case 'lectures':
           return <LectureManagement />;
         case 'attendance':
