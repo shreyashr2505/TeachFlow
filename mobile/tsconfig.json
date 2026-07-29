@@ -1,0 +1,38 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "src/*"
+      ]
+    }
+  },
+  "include": [
+    "App.tsx",
+    "src/app/**/*",
+    "src/components/**/*.tsx",
+    "src/navigation/**/*.tsx",
+    "src/screens/**/*.tsx",
+    "src/services/**/*.ts",
+    "src/types/**/*.ts",
+    "src/types/**/*.d.ts",
+    "src/utils/**/*.ts",
+    "src/store/**/*"
+  ],
+  "exclude": [
+    "src/components/ui.tsx",
+    "src/context/**/*",
+    "src/hooks/**/*",
+    "src/navigation/AppNavigator.tsx",
+    "src/screens/AuthScreens.tsx",
+    "src/screens/CrudCollectionScreen.tsx",
+    "src/screens/DashboardScreen.tsx",
+    "src/screens/ModuleScreens.tsx",
+    "src/services/cache.ts",
+    "src/services/teachflow.ts",
+    "src/theme.ts",
+    "src/types.ts"
+  ]
+}

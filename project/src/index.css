@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  @media (hover: hover) and (pointer: fine) {
+    .app-motion :is(.rounded-xl, .rounded-2xl, .rounded-3xl, .rounded-lg, [class*="rounded-"]) {
+      position: relative;
+      overflow: hidden;
+      transform-style: preserve-3d;
+      backface-visibility: hidden;
+      transform: translateZ(0);
+      transition:
+        transform 180ms ease,
+        box-shadow 180ms ease,
+        border-color 180ms ease,
+        background-color 180ms ease;
+      will-change: transform, box-shadow;
+    }
+
+    .app-motion :is(.rounded-xl, .rounded-2xl, .rounded-3xl, .rounded-lg, [class*="rounded-"])::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background:
+        radial-gradient(circle at var(--tf-glow-x, 50%) var(--tf-glow-y, 0%), rgba(255, 255, 255, 0.22), transparent 38%),
+        linear-gradient(135deg, rgba(59, 130, 246, 0.14), rgba(168, 85, 247, 0.12));
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 180ms ease;
+    }
+
+    .app-motion :is(.rounded-xl, .rounded-2xl, .rounded-3xl, .rounded-lg, [class*="rounded-"]):not([data-no-tilt="true"]).tf-motion-active,
+    .app-motion :is(.rounded-xl, .rounded-2xl, .rounded-3xl, .rounded-lg, [class*="rounded-"]):not([data-no-tilt="true"]):hover {
+      transform:
+        perspective(1200px)
+        translateY(-6px)
+        rotateX(var(--tf-tilt-x, 0deg))
+        rotateY(var(--tf-tilt-y, 0deg))
+        scale(1.01);
+      box-shadow: 0 22px 48px rgba(15, 23, 42, 0.18);
+    }
+
+    .app-motion :is(.rounded-xl, .rounded-2xl, .rounded-3xl, .rounded-lg, [class*="rounded-"]):not([data-no-tilt="true"]).tf-motion-active::before,
+    .app-motion :is(.rounded-xl, .rounded-2xl, .rounded-3xl, .rounded-lg, [class*="rounded-"]):not([data-no-tilt="true"]):hover::before {
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .app-motion :is(.rounded-xl, .rounded-2xl, .rounded-3xl, .rounded-lg, [class*="rounded-"]) {
+      transition: none;
+      transform: none;
+    }
+  }
+}
+
+body {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+body.dark {
+  background-color: #0f172a;
+  color: #e5e7eb;
+}
+
+body.dark .bg-white {
+  background-color: #111827 !important;
+}
+
+body.dark .bg-gray-50,
+body.dark .bg-gray-100,
+body.dark .from-blue-50,
+body.dark .to-purple-50 {
+  background-color: #0f172a !important;
+  background-image: none !important;
+}
+
+body.dark .text-gray-900 {
+  color: #f9fafb !important;
+}
+
+body.dark .text-gray-700,
+body.dark .text-gray-600,
+body.dark .text-gray-500,
+body.dark .text-gray-400 {
+  color: #cbd5e1 !important;
+}
+
+body.dark .border-gray-100,
+body.dark .border-gray-200,
+body.dark .border-gray-300 {
+  border-color: #334155 !important;
+}
+
+body.dark .hover\:bg-gray-50:hover,
+body.dark .hover\:bg-gray-100:hover,
+body.dark .bg-gray-50 {
+  background-color: #1f2937 !important;
+}
+
+body.dark input,
+body.dark select,
+body.dark textarea {
+  background-color: #0f172a;
+  color: #f9fafb;
+  border-color: #475569;
+}

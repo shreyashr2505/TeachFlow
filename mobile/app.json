@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "TeachFlow",
+    "slug": "teachflow-mobile",
+    "scheme": "teachflow",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "backgroundColor": "#0b1120"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {},
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}

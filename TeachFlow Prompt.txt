@@ -1,0 +1,39 @@
+TeachFlow (Coaching Class Management System)
+
+User Stories
+How users achieve their goals in the app
+As an Admin, I want to create and manage my coaching class with separate dashboards for students and teachers so that I can efficiently organize class operations.
+As a Teacher, I want to view my teaching schedule, mark attendance, and enter marks of exams of students so that I can manage my responsibilities.
+As a Student, I want to view my schedule, attendance, and marks to keep track of my performance and class activities.
+As a Parent, I want to view my child's attendance, marks, and fee status to stay informed about their education.
+
+Key Features
+
+The tools and functions that enable users to accomplish core tasks
+
+User Authentication and Admin Role Assignment:-
+
+Supports login and signup using email and password. Upon signup, users can indicate their desired role (Teacher, Student, Parent), which is then assigned or approved by the Admin. Admin assigns and approves users' roles in the system to grant access to specific dashboards.
+
+Admin Coaching Class Setup:-
+
+Allows admins to sign up and create a unique coaching class space, including name and logo. Set up a unique sub-domain for this class (e.g., teachflow.com/class/yourclassname). All data management is isolated per class.
+
+Admin: Student and Teacher Management:-
+
+Admin can add, edit, and remove students and teachers, as well as approve or assign roles at signup. Student data includes batch information and linked parent email. Admin dashboard displays aggregated data, such as total students and pending fees.
+
+Role-Based Dashboards:-
+
+Each user role (Admin, Teacher, Student, Parent) has a dedicated dashboard with task-specific features. Parents have read-only access to their linked child's data.
+
+Lecture and Attendance Management:-
+
+Admin can schedule lectures with details like date, time, batch, subject, and teacher assignment. Student attendance is marked per lecture as Present or Absent, while teacher attendance is marked automatically when they conduct lectures.
+
+Marks and Fees Management:-
+
+Admin and teachers can input marks for tests/exams per student. Manage and track student fees by batch with statuses such as Paid, Partial, or Due, including alerts for due payments.
+
+
+i want admin to create a class and setup his coaching class with his class name and inside his class the teachers and students will be added and the dashboards too

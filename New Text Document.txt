@@ -1,0 +1,8 @@
+meeting, media gallery, notification,analytics section is not opening
+CRUD option in teacher, parent report cards saction of admin dashboard not working
+plan limit for new class creation has errors not working according to the plan ive given you
+student,teacher,parent and super admin dashboard is not working at all not a single section is working please make all these changes
+
+
+
+clg id bolt login command

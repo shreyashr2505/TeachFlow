@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#020817" />
+    <title>TeachFlow Offline</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #020817;
+        --panel: rgba(15, 23, 42, 0.94);
+        --border: rgba(148, 163, 184, 0.24);
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --accent: #38bdf8;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at top, rgba(14, 165, 233, 0.18), transparent 32%),
+          linear-gradient(160deg, #020817 0%, #0f172a 55%, #111827 100%);
+        color: var(--text);
+        padding: 24px;
+      }
+
+      .card {
+        width: min(100%, 420px);
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 28px;
+        padding: 28px;
+        box-shadow: 0 30px 80px rgba(2, 6, 23, 0.42);
+      }
+
+      .badge {
+        width: 52px;
+        height: 52px;
+        display: grid;
+        place-items: center;
+        border-radius: 18px;
+        background: rgba(56, 189, 248, 0.15);
+        color: var(--accent);
+        font-size: 24px;
+      }
+
+      h1 {
+        margin: 18px 0 10px;
+        font-size: 28px;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <div class="badge">TF</div>
+      <h1>You are offline</h1>
+      <p>TeachFlow will keep your last visited pages ready and sync fresh changes automatically once you reconnect.</p>
+    </main>
+  </body>
+</html>
