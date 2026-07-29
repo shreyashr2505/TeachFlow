@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+body.dark {
+  background-color: #0f172a;
+  color: #e5e7eb;
+}
+
+body.dark .bg-white {
+  background-color: #111827 !important;
+}
+
+body.dark .bg-gray-50,
+body.dark .bg-gray-100,
+body.dark .from-blue-50,
+body.dark .to-purple-50 {
+  background-color: #0f172a !important;
+  background-image: none !important;
+}
+
+body.dark .text-gray-900 {
+  color: #f9fafb !important;
+}
+
+body.dark .text-gray-700,
+body.dark .text-gray-600,
+body.dark .text-gray-500,
+body.dark .text-gray-400 {
+  color: #cbd5e1 !important;
+}
+
+body.dark .border-gray-100,
+body.dark .border-gray-200,
+body.dark .border-gray-300 {
+  border-color: #334155 !important;
+}
+
+body.dark .hover\:bg-gray-50:hover,
+body.dark .hover\:bg-gray-100:hover,
+body.dark .bg-gray-50 {
+  background-color: #1f2937 !important;
+}
+
+body.dark input,
+body.dark select,
+body.dark textarea {
+  background-color: #0f172a;
+  color: #f9fafb;
+  border-color: #475569;
+}
